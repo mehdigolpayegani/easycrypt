@@ -52,13 +52,25 @@ module Core = struct
     let (lv, distr), s = tc1_last_rnd tc hs.ehs_s in
     let ty_distr = proj_distr_ty env (e_ty distr) in
     let x_id = EcIdent.create (symbol_of_lv lv) in
-    let x = f_local x_id ty_distr in
+    let xinv = { m = fst hs.ehs_m; inv = f_local x_id ty_distr } in
     let m = fst hs.ehs_m in
     let distr = EcFol.ss_inv_of_expr m distr in
-    let post = subst_form_lv env lv {m;inv=x} (ehs_po hs) in
-    let post = map_ss_inv2 (f_Ep ty_distr) distr
-      (map_ss_inv1 (f_lambda [(x_id,GTty ty_distr)]) post) in
-    let concl = f_eHoareS (snd hs.ehs_m) (ehs_pr hs) s post in
+    (* Guard and value transformed separately (no [`|`]-fold): value -> its
+       expectation, guard -> [forall x, x \in supp d => Q[lv := x]]. *)
+    let po_g = (ehs_pob hs).inv  and po_v = (ehs_po_val hs).inv in
+    let v_post = subst_form_lv env lv xinv { (ehs_po hs) with inv = po_v } in
+    let v_post = map_ss_inv2 (f_Ep ty_distr) distr
+      (map_ss_inv1 (f_lambda [(x_id,GTty ty_distr)]) v_post) in
+    let g_post =
+      if f_equal po_g f_true then f_true
+      else
+        let g = subst_form_lv env lv xinv { (ehs_po hs) with inv = po_g } in
+        let g = map_ss_inv2 f_imp (map_ss_inv2 f_in_supp xinv distr) g in
+        let g = map_ss_inv1 (f_forall_simpl [(x_id,GTty ty_distr)]) g in
+        g.inv in
+    let concl =
+      f_eHoareS_r { hs with ehs_s = s; ehs_po = f_tuple [g_post; v_post.inv] }
+        [@alert "-priv_pl"] in
     FApi.xmutate1 tc `Rnd [concl]
 
   (* -------------------------------------------------------------------- *)

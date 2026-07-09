@@ -117,16 +117,20 @@ module LowInternal = struct
 
     | _ -> raise No_wp
 
-  let rec ewp_stmt env (memenv:EcMemory.memenv) (stmt: EcModules.instr list) letspf =
+  (* Generic wp over assignment / if / random sampling.  The only thing that
+     varies with the postcondition kind is how a sampling [x <$ d] wraps the
+     body: the [at_rnd] parameter (expectation in [ewp], forall-over-support in
+     [gwp]). *)
+  let rec xwp_stmt ~at_rnd env (memenv:EcMemory.memenv) (stmt: EcModules.instr list) letspf =
     match stmt with
     | [] -> stmt, letspf
     | i :: stmt' ->
         try
-          let letspf = ewp_instr env memenv i letspf in
-          ewp_stmt env memenv stmt' letspf
+          let letspf = xwp_instr ~at_rnd env memenv i letspf in
+          xwp_stmt ~at_rnd env memenv stmt' letspf
         with No_wp -> (stmt, letspf)
 
-    and ewp_instr env (memenv:EcMemory.memenv) i letspf =
+    and xwp_instr ~at_rnd env (memenv:EcMemory.memenv) i letspf =
       match i.i_node with
       | Sasgn (lv, e) ->
         wp_asgn_aux None memenv lv e letspf
@@ -141,12 +145,12 @@ module LowInternal = struct
         let let1 = lv_subst ?c_pre:None m lv x in
         let lets = let1 :: lets in
         let f = mk_let_of_lv_substs env (lets,f) in
-        let f = f_Ep ty_distr distr (f_lambda [(x_id,GTty ty_distr)] f) in
+        let f = at_rnd x_id ty_distr x distr f in
         ([], f)
 
       | Sif(e, s1, s2) ->
-        let r1,(lets1,f1) = ewp_stmt env memenv (List.rev s1.s_node) letspf in
-        let r2,(lets2,f2) = ewp_stmt env memenv (List.rev s2.s_node) letspf in
+        let r1,(lets1,f1) = xwp_stmt ~at_rnd env memenv (List.rev s1.s_node) letspf in
+        let r2,(lets2,f2) = xwp_stmt ~at_rnd env memenv (List.rev s2.s_node) letspf in
         if List.is_empty r1 && List.is_empty r2 then begin
           let f1 = mk_let_of_lv_substs env (lets1,f1) in
           let f2 = mk_let_of_lv_substs env (lets2,f2) in
@@ -178,8 +182,20 @@ let wp
   let pre = mk_let_of_lv_substs ?mc ~uselet (EcEnv.LDecl.toenv hyps) letsf in
   (List.rev r, pre)
 
+(* Expectation wp (xreal value): a random sampling becomes an expectation. *)
 let ewp ?(uselet=true) env m s post =
-  let r,(lets,f) = LowInternal.ewp_stmt env m (List.rev s.s_node) ([],post) in
+  let at_rnd x_id ty_distr _x distr f =
+    f_Ep ty_distr distr (f_lambda [(x_id,GTty ty_distr)] f) in
+  let r,(lets,f) = LowInternal.xwp_stmt ~at_rnd env m (List.rev s.s_node) ([],post) in
+  let pre = mk_let_of_lv_substs ~uselet env (lets,f) in
+  (List.rev r, pre)
+
+(* Guard wp (boolean), aligned with [ewp]: a random sampling becomes a
+   universal over the support, [forall x, x \in supp d => Q[x]]. *)
+let gwp ?(uselet=true) env m s post =
+  let at_rnd x_id ty_distr x distr f =
+    f_forall_simpl [(x_id,GTty ty_distr)] (f_imp_simpl (f_in_supp x distr) f) in
+  let r,(lets,f) = LowInternal.xwp_stmt ~at_rnd env m (List.rev s.s_node) ([],post) in
   let pre = mk_let_of_lv_substs ~uselet env (lets,f) in
   (List.rev r, pre)
 
@@ -207,15 +223,25 @@ module TacInternal = struct
     FApi.xmutate1 tc `Wp [concl]
 
   let t_ehoare_wp ?(uselet=true) (i : codegap1 option) tc =
-    let env = FApi.tc1_env tc in
+    let hyps = FApi.tc1_hyps tc in
+    let env = EcEnv.LDecl.toenv hyps in
     let hs = tc1_as_ehoareS tc in
     let (s_hd, s_wp) = o_split env i hs.ehs_s in
     let s_wp = EcModules.stmt s_wp in
-    let (s_wp, post) = ewp ~uselet env hs.ehs_m s_wp (ehs_po hs).inv in
-    check_wp_progress tc i hs.ehs_s s_wp;
-    let s = EcModules.stmt (s_hd @ s_wp) in
-    let m = fst hs.ehs_m in
-    let concl = f_eHoareS (snd hs.ehs_m) (ehs_pr hs) s {m;inv=post} in
+    let po_g = (ehs_pob hs).inv  and po_v = (ehs_po_val hs).inv in
+    (* Guard and value are transformed separately (no direction-dependent
+       [`|`]-fold): value by [ewp], guard by [gwp]. *)
+    let (s_wp_v, post_v) = ewp ~uselet env hs.ehs_m s_wp po_v in
+    let (s_wp_g, post_g) = gwp ~uselet env hs.ehs_m s_wp po_g in
+    (* [ewp]/[gwp] consume the same instructions, so the remainders align. *)
+    if List.length s_wp_g <> List.length s_wp_v then
+      tc_error !!tc
+        "ehoare wp: the guard and value transforms disagreed (please report)";
+    check_wp_progress tc i hs.ehs_s s_wp_v;
+    let s = EcModules.stmt (s_hd @ s_wp_v) in
+    let concl =
+      f_eHoareS_r { hs with ehs_s = s; ehs_po = f_tuple [post_g; post_v] }
+        [@alert "-priv_pl"] in
     FApi.xmutate1 tc `Wp [concl]
 
   let t_bdhoare_wp ?(uselet=true) (i : codegap1 option) tc =
