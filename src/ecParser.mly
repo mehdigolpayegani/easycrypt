@@ -8,6 +8,14 @@
 
   let parse_error loc msg = raise (ParseError (loc, msg))
 
+  (* Attach the (optional) [<=]/[=]/[>=] direction marker written before the
+     bracket of an [ehoare [cmp] [ ... ]] formula. *)
+  let ehoare_set_cmp (f : pformula_r) (cmp : phoarecmp option) : pformula_r =
+    match f, cmp with
+    | _, None -> f
+    | PFehoareF (m, pre, mp, post, _), _ -> PFehoareF (m, pre, mp, post, cmp)
+    | _, _ -> f
+
   let pqsymb_of_psymb (x : psymbol) : pqsymbol =
     mk_loc x.pl_loc ([], x.pl_desc)
 
@@ -1119,7 +1127,8 @@ sform_u(P):
 
 | HOARE LBRACKET hb=hoare_body(P) RBRACKET { hb }
 
-| EHOARE LBRACKET hb=ehoare_body(P) RBRACKET { hb }
+| EHOARE cmp=ioption(ehoare_cmp_marker) LBRACKET hb=ehoare_body(P) RBRACKET 
+    { ehoare_set_cmp hb cmp }
 
 | EQUIV LBRACKET eb=equiv_body(P) RBRACKET { eb }
 
@@ -1242,10 +1251,22 @@ hoare_body(P):
     pre=form_r(P) LONGARROW post=form_r(P) epost=hoare_epost(P)
     { PFhoareF (m, pre, mp, { pnormal = post; pexcept = epost} ) }
 
+(* An eHoare side: an optional boolean guard [P] before a [|], then the
+   xreal value [f]. Writing just [f] is the unconditional case (guard = true). *)
+ehoare_spec(P):
+| LBRACE pb=form_r(P) PIPE pf=form_r(P) RBRACE
+    { (Some pb, pf) }
+| pf=form_r(P)
+    { (None, pf) }
+
+(* Direction marker written before the bracket: [<=] / [=] / [>=]. *)
+ehoare_cmp_marker:
+| LBRACKET c=hoare_bd_cmp RBRACKET { c }
+
 ehoare_body(P):
-  mp=loc(fident) m=brace(mident)? COLON pre=form_r(P) LONGARROW
-                       post=form_r(P)
-    { PFehoareF (m, pre, mp, post) }
+  mp=loc(fident) m=brace(mident)? COLON pre=ehoare_spec(P) LONGARROW
+                       post=ehoare_spec(P)
+    { PFehoareF (m, pre, mp, post, None) }
 
 phoare_body(P):
   LBRACKET mp=loc(fident) m=brace(mident)? COLON

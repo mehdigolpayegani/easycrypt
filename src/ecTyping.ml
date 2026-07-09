@@ -3535,7 +3535,7 @@ and trans_form_or_pattern env mode ?mv ?ps ue pf tt =
         let epost' = trans_poe penv_e ue post.pexcept in
         f_hoareF {m;inv=pre'} fpath { hsi_m = m; hsi_inv = POE.mk post' epost'; }
 
-    | PFehoareF (m, pre, gp, post) ->
+    | PFehoareF (m, (preb, pre), gp, (postb, post), cmp) ->
         if mode <> `Form then
           tyerror f.pl_loc env (NotAnExpression `Logic);
         let m = odfl "&hr" (omap unloc m) in
@@ -3546,7 +3546,14 @@ and trans_form_or_pattern env mode ?mv ?ps ue pf tt =
         let post' = transf qenv post in
           unify_or_fail penv ue pre.pl_loc  ~expct:txreal pre'.f_ty;
           unify_or_fail qenv ue post.pl_loc ~expct:txreal post'.f_ty;
-          f_eHoareF {m;inv=pre'} fpath {m;inv=post'}
+        (* Each guard, when present, is a boolean predicate on its memory. *)
+        let trguard tenv pb =
+          let b = transf tenv pb in
+          unify_or_fail tenv ue pb.pl_loc ~expct:tbool b.f_ty; b in
+        let prb' = omap (trguard penv) preb in
+        let pob' = omap (trguard qenv) postb in
+          f_eHoareF ?prb:prb' ?pob:pob' ~cmp:(odfl FHge cmp)
+            {m;inv=pre'} fpath {m;inv=post'}
 
     | PFBDhoareF (m, pre, gp, post, hcmp, bd) ->
         if mode <> `Form then

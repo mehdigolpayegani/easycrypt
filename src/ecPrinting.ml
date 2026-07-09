@@ -1520,6 +1520,23 @@ let string_of_hcmp = function
   | FHeq -> "="
   | FHge -> ">="
 
+(* An eHoare side is stored as a (bool, xreal) tuple (guard, value).
+   Print just the value when the guard is [true] (the unconditional case),
+   otherwise print it as [{guard | value}], matching the input syntax. *)
+let pp_ehoare_side (pp : Format.formatter -> form -> unit) fmt (f : form) =
+  match f.f_node with
+  | Ftuple [g; v] when f_equal g f_true -> pp fmt v
+  | Ftuple [g; v] -> Format.fprintf fmt "{%a |@ %a}" pp g pp v
+  | _ -> pp fmt f
+
+(* Form shown for an eHoare side in the multi-line goal view: the bare value
+   when the guard is [true] (identical to the unguarded display), otherwise
+   the whole (guard, value) tuple. *)
+let ehoare_disp_form (f : form) : form =
+  match f.f_node with
+  | Ftuple [g; v] when f_equal g f_true -> v
+  | _ -> f
+
 (* -------------------------------------------------------------------- *)
 let string_of_locality = function
   | `Global  -> None
@@ -2049,21 +2066,26 @@ and pp_form_core_r
       let ppepr = PPEnv.create_and_push_mem ppe ~active:true mepr in
       let ppepo = PPEnv.create_and_push_mem ppe ~active:true mepo in
       let pm =  debug_mode || hf.ehf_m.id_symb <> "&hr" in
+      (* direction marker before the bracket, matching input syntax *)
+      let scmp = " [" ^ string_of_hcmp hf.ehf_cmp ^ "] " in
       Format.fprintf fmt
-        "ehoare[@[<hov 2>@ %a %a:@ @[%a ==>@ %a@]@]]"
+        "ehoare%s[@[<hov 2>@ %a %a:@ @[%a ==>@ %a@]@]]"
+        scmp
         (pp_funname ppe) hf.ehf_f
         (pp_pl_mem_binding pm ppe) hf.ehf_m
-        (pp_form ppepr) (ehf_pr hf).inv
-        (pp_form ppepo) (ehf_po hf).inv
+        (pp_ehoare_side (pp_form ppepr)) (ehf_pr hf).inv
+        (pp_ehoare_side (pp_form ppepo)) (ehf_po hf).inv
 
   | FeHoareS hs ->
       let ppe = PPEnv.push_mem ppe ~active:true hs.ehs_m in
       let pm = debug_mode || (fst hs.ehs_m).id_symb <> "&hr" in
-      Format.fprintf fmt "ehoare[@[<hov 2>@ %a %a:@ @[%a ==>@ %a@]@]]"
+      let scmp = " [" ^ string_of_hcmp hs.ehs_cmp ^ "] " in
+      Format.fprintf fmt "ehoare%s[@[<hov 2>@ %a %a:@ @[%a ==>@ %a@]@]]"
+        scmp
         (pp_stmt_for_form ppe) hs.ehs_s
         (pp_pl_mem_binding pm ppe) (fst hs.ehs_m)
-        (pp_form ppe) (ehs_pr hs).inv
-        (pp_form ppe) (ehs_po hs).inv
+        (pp_ehoare_side (pp_form ppe)) (ehs_pr hs).inv
+        (pp_ehoare_side (pp_form ppe)) (ehs_po hs).inv
 
   | FequivF eqv ->
       let (meprl, meprr), (mepol,mepor) =
@@ -3198,10 +3220,11 @@ let pp_eHoareF (ppe : PPEnv.t) ?prpo fmt hf =
   let ppepr = PPEnv.create_and_push_mem ppe ~active:true mepr in
   let ppepo = PPEnv.create_and_push_mem ppe ~active:true mepo in
 
-  Format.fprintf fmt "%a@\n%!" (pp_pre ppepr ?prpo) (ehf_pr hf).inv;
+  Format.fprintf fmt "%a@\n%!" (pp_pre ppepr ?prpo) (ehoare_disp_form (ehf_pr hf).inv);
   let pm = debug_mode || hf.ehf_m.id_symb <> "&hr" in
-  Format.fprintf fmt "    %a %a@\n%!" (pp_funname ppe) hf.ehf_f (pp_pl_mem_binding pm ppe) hf.ehf_m;
-  Format.fprintf fmt "@\n%a%!" (pp_post ppepo ?prpo) (ehf_po hf).inv
+  let scmp = " [" ^ string_of_hcmp hf.ehf_cmp ^ "]" in
+  Format.fprintf fmt "    %a %a%s@\n%!" (pp_funname ppe) hf.ehf_f (pp_pl_mem_binding pm ppe) hf.ehf_m scmp;
+  Format.fprintf fmt "@\n%a%!" (pp_post ppepo ?prpo) (ehoare_disp_form (ehf_po hf).inv)
 
 (* -------------------------------------------------------------------- *)
 
@@ -3210,14 +3233,16 @@ let pp_eHoareS (ppe : PPEnv.t) ?prpo fmt hs =
   let ppnode = collect2_s ppef hs.ehs_s.s_node [] in
   let ppnode = c_ppnode ~width:ppe.PPEnv.ppe_width ppef ppnode
   in
-    Format.fprintf fmt "Context : %a: %a@\n%!" (pp_mem ppe) (fst hs.ehs_m)
-                                               (pp_memtype ppe) (snd hs.ehs_m);
+    let scmp = "  [" ^ string_of_hcmp hs.ehs_cmp ^ "]" in
+    Format.fprintf fmt "Context : %a: %a%s@\n%!" (pp_mem ppe) (fst hs.ehs_m)
+                                               (pp_memtype ppe) (snd hs.ehs_m) scmp;
     Format.fprintf fmt "@\n%!";
-    Format.fprintf fmt "%a%!" (pp_pre ppef ?prpo) (ehs_pr hs).inv;
+    Format.fprintf fmt "%a%!" (pp_ehoare_side (pp_pre ppef ?prpo)) (ehs_pr hs).inv;
+    
     Format.fprintf fmt "@\n%!";
     Format.fprintf fmt "%a" (pp_node `Left) ppnode;
     Format.fprintf fmt "@\n%!";
-    Format.fprintf fmt "%a%!" (pp_post ppef ?prpo) (ehs_po hs).inv
+    Format.fprintf fmt "%a%!" (pp_ehoare_side (pp_post ppef ?prpo)) (ehs_po hs).inv
 
 
 (* -------------------------------------------------------------------- *)

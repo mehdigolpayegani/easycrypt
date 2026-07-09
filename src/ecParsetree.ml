@@ -246,7 +246,7 @@ and pformula_r =
   | PFlsless  of pgamepath
   | PFscope   of pqsymbol * pformula
   | PFhoareF   of psymbol option * pformula * pgamepath * phoare_post
-  | PFehoareF  of psymbol option * pformula * pgamepath * pformula
+  | PFehoareF  of psymbol option * (pformula option * pformula) * pgamepath * (pformula option * pformula) * phoarecmp option
   | PFequivF   of psymbol option * psymbol option * pformula * (pgamepath * pgamepath) * pformula
   | PFeagerF   of psymbol option * psymbol option * pformula * (pstmt * pgamepath * pgamepath * pstmt) * pformula
   | PFprob     of psymbol option * pgamepath * (pformula list) * pmemory * pformula
