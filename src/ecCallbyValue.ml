@@ -504,7 +504,9 @@ and cbv (st : state) (s : subst) (f : form) (args : args) : form =
     let ehf_po  = norm st s (ehf_po hf).inv in
     let ehf_f   = norm_xfun st s hf.ehf_f in
     let (m,_) = norm_me s (abstract hf.ehf_m) in
-    f_eHoareF {m;inv=ehf_pr} ehf_f {m;inv=ehf_po}
+    (* pr/po are already (bool, xreal) tuples: rebuild raw, do not re-wrap,
+       and preserve the direction [ehf_cmp]. *)
+    f_eHoareF_r { hf with ehf_m = m; ehf_pr; ehf_f; ehf_po } [@alert "-priv_pl"]
 
   | FeHoareS hs ->
     assert (Args.isempty args);
@@ -513,7 +515,7 @@ and cbv (st : state) (s : subst) (f : form) (args : args) : form =
     let ehs_po  = norm st s (ehs_po hs).inv in
     let ehs_s   = norm_stmt s hs.ehs_s in
     let (m,mt)   = norm_me s hs.ehs_m in
-    f_eHoareS mt {m;inv=ehs_pr} ehs_s {m;inv=ehs_po}
+    f_eHoareS_r { hs with ehs_m = (m,mt); ehs_pr; ehs_s; ehs_po } [@alert "-priv_pl"]
 
   | FbdHoareF hf ->
     assert (Args.isempty args);

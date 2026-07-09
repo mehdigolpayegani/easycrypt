@@ -564,11 +564,13 @@ let is_alpha_eq ?(subst=Fsubst.f_subst_id) hyps f1 f2 =
       POE.iter2 (aux env subst) (hs_po hs1).hsi_inv (hs_po hs2).hsi_inv
 
     | FeHoareF hf1, FeHoareF hf2 ->
+      ensure (hf1.ehf_cmp = hf2.ehf_cmp);
       check_xp env subst hf1.ehf_f hf2.ehf_f;
       aux env subst (ehf_pr hf1).inv (ehf_pr hf2).inv;
       aux env subst (ehf_po hf1).inv (ehf_po hf2).inv;
 
     | FeHoareS hs1, FeHoareS hs2 ->
+      ensure (hs1.ehs_cmp = hs2.ehs_cmp);
       check_s env subst hs1.ehs_s hs2.ehs_s;
       let subst = check_me_binding env subst hs1.ehs_m hs2.ehs_m in
       aux env subst (ehs_pr hs1).inv (ehs_pr hs2).inv;
@@ -1264,7 +1266,7 @@ let rec simplify ri env f =
   | FeHoareF hf when ri.ri.modpath ->
       let ehf_f = EcEnv.NormMp.norm_xfun env hf.ehf_f in
       f_map (fun ty -> ty) (simplify ri env)
-      (f_eHoareF (ehf_pr hf) ehf_f (ehf_po hf))
+      (f_eHoareF_r { hf with ehf_f } [@alert "-priv_pl"])
 
   | FbdHoareF hf when ri.ri.modpath ->
       let bhf_f = EcEnv.NormMp.norm_xfun env hf.bhf_f in
@@ -1381,11 +1383,10 @@ let zpop ri side f hd =
       hs.hs_s
       { hsi_m = m ; hsi_inv = POE.mk po poe; }
   | Zhl {f_node = FeHoareF hf}, [pr;po] ->
-    let m = hf.ehf_m in
-    f_eHoareF {m;inv=pr} hf.ehf_f {m;inv=po}
+    (* pr/po are already (bool, xreal) tuples: rebuild raw, preserve cmp. *)
+    f_eHoareF_r { hf with ehf_pr = pr; ehf_po = po } [@alert "-priv_pl"]
   | Zhl {f_node = FeHoareS hs}, [pr;po] ->
-    let m = fst hs.ehs_m in
-    f_eHoareS (snd hs.ehs_m) {m;inv=pr} hs.ehs_s {m;inv=po}
+    f_eHoareS_r { hs with ehs_pr = pr; ehs_po = po } [@alert "-priv_pl"]
   | Zhl {f_node = FbdHoareF hf}, [pr;po;bd] ->
     let m = hf.bhf_m in
     f_bdHoareF {m;inv=pr} hf.bhf_f {m;inv=po} hf.bhf_cmp {m;inv=bd}
@@ -1529,13 +1530,14 @@ let rec conv ri env f1 f2 stk =
     | exception NotConv -> force_head ri env f1 f2 stk
     end
 
-  | FeHoareF hf1, FeHoareF hf2 when EqTest_i.for_xp env hf1.ehf_f hf2.ehf_f ->
+  | FeHoareF hf1, FeHoareF hf2
+      when hf1.ehf_cmp = hf2.ehf_cmp && EqTest_i.for_xp env hf1.ehf_f hf2.ehf_f ->
     let pr2 = (ss_inv_rebind (ehf_pr hf2) hf1.ehf_m).inv in
     let po2 = (ss_inv_rebind (ehf_po hf2) hf1.ehf_m).inv in
     conv ri env (ehf_pr hf1).inv pr2 (zhl f1 [(ehf_po hf1).inv] [po2] stk)
 
   | FeHoareS hs1, FeHoareS hs2
-      when EqTest_i.for_stmt env hs1.ehs_s hs2.ehs_s ->
+      when hs1.ehs_cmp = hs2.ehs_cmp && EqTest_i.for_stmt env hs1.ehs_s hs2.ehs_s ->
     begin match check_me_binding env Fsubst.f_subst_id hs1.ehs_m hs2.ehs_m with
     | _subst ->
         let pr2 = (ss_inv_rebind (ehs_pr hs2) (fst hs1.ehs_m)).inv in

@@ -468,14 +468,15 @@ module Fsubst = struct
       let (s, m) = add_m_binding s hf.ehf_m in
       let hf_pr = f_subst ~tx s (ehf_pr hf).inv in
       let hf_po = f_subst ~tx s (ehf_po hf).inv in
-      f_eHoareF {m;inv=hf_pr} hf_f {m;inv=hf_po}
+      (* pr/po are already (bool, xreal) tuples: rebuild raw, preserve cmp. *)
+      f_eHoareF_r { hf with ehf_m = m; ehf_pr = hf_pr; ehf_f = hf_f; ehf_po = hf_po } [@alert "-priv_pl"]
 
     | FeHoareS hs ->
       let hs_s    = s_subst s hs.ehs_s in
       let s, (m, mt) = add_me_binding s hs.ehs_m in
       let hs_pr   = f_subst ~tx s (ehs_pr hs).inv in
       let hs_po   = f_subst ~tx s (ehs_po hs).inv in
-      f_eHoareS mt {m;inv=hs_pr} hs_s {m;inv=hs_po}
+      f_eHoareS_r { hs with ehs_m = (m, mt); ehs_pr = hs_pr; ehs_s = hs_s; ehs_po = hs_po } [@alert "-priv_pl"]
 
     | FbdHoareF hf ->
       let hf_f  = x_subst s hf.bhf_f in

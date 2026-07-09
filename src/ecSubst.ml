@@ -564,14 +564,17 @@ let rec subst_form (s : subst) (f : form) =
      let s = add_memory s ehf.ehf_m ehf.ehf_m in
      let ehf_pr = map_ss_inv1 (subst_form s) (ehf_pr ehf) in
      let ehf_po = map_ss_inv1 (subst_form s) (ehf_po ehf) in
-     f_eHoareF ehf_pr ehf_f ehf_po
+     (* pr/po are already (bool, xreal) tuples: rebuild raw to keep both the
+        tuple structure and the direction [ehf_cmp]. *)
+     f_eHoareF_r { ehf with ehf_pr = ehf_pr.inv; ehf_f; ehf_po = ehf_po.inv } [@alert "-priv_pl"]
 
   | FeHoareS ehs ->
      let ehs_s = subst_stmt s ehs.ehs_s in
      let s, (_,mt) = subst_memtype s ehs.ehs_m in
      let ehs_pr = map_ss_inv1 (subst_form s) (ehs_pr ehs) in
      let ehs_po = map_ss_inv1 (subst_form s) (ehs_po ehs) in
-     f_eHoareS mt ehs_pr ehs_s ehs_po
+     f_eHoareS_r { ehs with ehs_m = (ehs_pr.m, mt); ehs_pr = ehs_pr.inv;
+                   ehs_s; ehs_po = ehs_po.inv } [@alert "-priv_pl"]
 
   | FequivF ef ->
      let ef_fl = subst_xpath s ef.ef_fl in

@@ -1565,8 +1565,8 @@ module FPosition = struct
               let (ehf_pr, ehf_po) =
                 as_seq2 (doit p [(ehf_pr hf).inv; (ehf_po hf).inv])
               in
-              let m = hf.ehf_m in
-              f_eHoareF {m;inv=ehf_pr} hf.ehf_f {m;inv=ehf_po}
+              (* pr/po are already (bool, xreal) tuples: rebuild raw, keep cmp. *)
+              f_eHoareF_r { hf with ehf_pr; ehf_po } [@alert "-priv_pl"]
 
           | FbdHoareF hf ->
               let sub = doit p [(bhf_pr hf).inv; (bhf_po hf).inv; (bhf_bd hf).inv] in

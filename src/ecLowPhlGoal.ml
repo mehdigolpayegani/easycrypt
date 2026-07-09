@@ -238,7 +238,7 @@ let tc1_process_codepos1 tc (side, cpos) =
 let hl_set_stmt (side : side option) (f : form) (s : stmt) =
   match side, f.f_node with
   | None       , FhoareS   hs -> f_hoareS (snd hs.hs_m) (hs_pr hs) s (hs_po hs)
-  | None       , FeHoareS  hs -> f_eHoareS (snd hs.ehs_m) (ehs_pr hs) s (ehs_po hs)
+  | None       , FeHoareS  hs -> f_eHoareS_r { hs with ehs_s = s } [@alert "-priv_pl"]
   | None       , FbdHoareS hs -> f_bdHoareS (snd hs.bhs_m) (bhs_pr hs) s (bhs_po hs) hs.bhs_cmp (bhs_bd hs)
   | Some `Left , FequivS   es -> f_equivS (snd es.es_ml) (snd es.es_mr) (es_pr es) s es.es_sr (es_po es)
   | Some `Right, FequivS   es -> f_equivS (snd es.es_ml) (snd es.es_mr) (es_pr es) es.es_sl s (es_po es)
@@ -292,10 +292,10 @@ let set_pre ~pre f =
     f_hoareS (snd hs.hs_m) pre hs.hs_s (hs_po hs)
  | FeHoareF hf, Inv_ss pre  ->
     let pre = ss_inv_rebind pre hf.ehf_m in
-    f_eHoareF pre hf.ehf_f (ehf_po hf)
+    f_eHoareF_r { hf with ehf_pr = ehoare_as_tuple pre } [@alert "-priv_pl"]
  | FeHoareS hs, Inv_ss pre  ->
     let pre = ss_inv_rebind pre (fst hs.ehs_m) in
-    f_eHoareS (snd hs.ehs_m) pre hs.ehs_s (ehs_po hs)
+    f_eHoareS_r { hs with ehs_pr = ehoare_as_tuple pre } [@alert "-priv_pl"]
  | FbdHoareF hf, Inv_ss pre ->
     let pre = ss_inv_rebind pre hf.bhf_m in
     f_bdHoareF pre hf.bhf_f (bhf_po hf) hf.bhf_cmp (bhf_bd hf)
@@ -819,7 +819,7 @@ let t_code_transform (side : oside) cpos tr tx tc =
           let pr, po = ehs_pr ehs, ehs_po ehs in
           let (me, stmt, cs) =
             tx (pf, hyps) cpos (pr.inv, po.inv) (ehs.ehs_m, ehs.ehs_s) in
-          let concl = f_eHoareS (snd me) pr stmt po in
+          let concl = f_eHoareS_r { ehs with ehs_m = me; ehs_s = stmt } [@alert "-priv_pl"] in
           FApi.xmutate1 tc (tr None) (cs @ [concl])
 
       | _ ->
