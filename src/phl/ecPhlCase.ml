@@ -23,11 +23,16 @@ let t_hoare_case_r ?(simplify = true) f tc =
 
 (* --------------------------------------------------------------------- *)
 let t_ehoare_case_r ?(simplify = true) f tc =
-  let _ = simplify in
   let hs = tc1_as_ehoareS tc in
-  let mt = snd hs.ehs_m in
-  let concl1 = f_eHoareS mt (map_ss_inv2 f_interp_ehoare_form f (ehs_pr hs)) hs.ehs_s (ehs_po hs) in
-  let concl2 = f_eHoareS mt (map_ss_inv2 f_interp_ehoare_form (map_ss_inv1 f_not f) (ehs_pr hs)) hs.ehs_s (ehs_po hs) in
+  let fand = if simplify then f_and_simpl else f_and in
+  (* condition goes into the pre GUARD (not the value): direction independent *)
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let fb = (f : ss_inv).inv in
+  let mk cond =
+    f_eHoareS_r { hs with ehs_pr = f_tuple [fand pre_g cond; pre_v] }
+      [@alert "-priv_pl"] in
+  let concl1 = mk fb in
+  let concl2 = mk (f_not fb) in
   FApi.xmutate1 tc (`HlCase f) [concl1; concl2]
 
 (* --------------------------------------------------------------------- *)

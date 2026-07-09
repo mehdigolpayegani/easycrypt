@@ -48,15 +48,12 @@ module Low = struct
     let hs = tc1_as_ehoareS tc in
     let m  = EcMemory.memory hs.ehs_m in
     let hd,_,e,s = gen_rcond (!!tc, env) b m at_pos hs.ehs_s in
-    let pre pr =
-      match destr_app pr with
-      | o, pre :: _ when f_equal o fop_interp_ehoare_form -> pre
-      | _ -> tc_error !!tc "the pre should have the form \"_ `|` _\"" in
-    let pre = map_ss_inv1 pre (ehs_pr hs) in
+    (* branch condition read from the pre GUARD (like bdhoare's [bhs_pr]) *)
+    let pre = ehs_prb hs in
     let e = POE.lift e in
 
     let concl1  = f_hoareS (snd hs.ehs_m) pre hd e in
-    let concl2  = f_eHoareS (snd hs.ehs_m) (ehs_pr hs) s (ehs_po hs) in
+    let concl2  = f_eHoareS_r { hs with ehs_s = s } [@alert "-priv_pl"] in
     FApi.xmutate1 tc `RCond [concl1; concl2]
 
   (* ------------------------------------------------------------------ *)
@@ -239,10 +236,18 @@ module LowMatch = struct
     let (epr, hd, po1), (me, full) =
       gen_rcond_full (!!tc, FApi.tc1_env tc) c hs.ehs_m at_pos hs.ehs_s in
 
-    let pr = ofold (map_ss_inv2 f_and) (ehs_pr hs) epr in
+    (* [po1] is a boolean match assertion: discharge it as a hoare
+       side-condition with the pre GUARD; strengthen the pre guard of the
+       continuation with the match equality [epr]. *)
+    let pr_g = ofold (map_ss_inv2 f_and) (ehs_prb hs) epr in
 
-    let concl1  = f_eHoareS (snd hs.ehs_m) (ehs_pr hs) hd po1 in
-    let concl2  = f_eHoareS (snd me) pr full (ehs_po hs) in
+    let concl1  = f_hoareS (snd hs.ehs_m) (ehs_prb hs) hd (POE.lift po1) in
+    let concl2  =
+      f_eHoareS_r
+        { hs with ehs_m  = (fst hs.ehs_m, snd me);
+                  ehs_pr = f_tuple [pr_g.inv; (ehs_pr_val hs).inv];
+                  ehs_s  = full }
+        [@alert "-priv_pl"] in
 
     FApi.xmutate1 tc `RCondMatch [concl1; concl2]
 
