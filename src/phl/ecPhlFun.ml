@@ -98,7 +98,10 @@ let t_ehoareF_fun_def_r tc =
   let fres  = odfl {m;inv=f_tt} (omap (ss_inv_of_expr m) fdef.f_ret) in
   let post  = map_ss_inv2 (PVM.subst1 env pv_res m) fres (ehf_po hf) in
   let pre   = map_ss_inv1 (PVM.subst env (subst_pre env fsig m PVM.empty)) (ehf_pr hf) in
-  let concl' = f_eHoareS (snd memenv) pre fdef.f_body post in
+  (* [pre]/[post] are tuple sides: build raw, carry [ehf_cmp] *)
+  let concl' =
+    f_eHoareS_r { ehs_m = memenv; ehs_pr = pre.inv; ehs_s = fdef.f_body;
+                  ehs_po = post.inv; ehs_cmp = hf.ehf_cmp } [@alert "-priv_pl"] in
   FApi.xmutate1 tc `FunDef [concl']
 
 (* ------------------------------------------------------------------ *)
@@ -456,9 +459,12 @@ let t_fun_to_code_ehoare_r tc =
   let spr = ToCodeLow.add_var_tuple env pv_arg m a m PVM.empty in
   let spo = ToCodeLow.add_var env pv_res m r m PVM.empty in
 
+  (* [pre]/[post] are the (substituted) guarded tuple sides. *)
   let pre = PVM.subst env spr (ehf_pr hf).inv in
   let post = PVM.subst env spo (ehf_po hf).inv in
-  let concl = f_eHoareS mt {m;inv=pre} st {m;inv=post} in
+  let concl =
+    f_eHoareS_r { ehs_m = (m, mt); ehs_pr = pre; ehs_s = st;
+                  ehs_po = post; ehs_cmp = hf.ehf_cmp } [@alert "-priv_pl"] in
 
   FApi.xmutate1 tc `FunToCode [concl]
 

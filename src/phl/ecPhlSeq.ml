@@ -34,8 +34,12 @@ let t_ehoare_seq_r i phi tc =
   let hs = tc1_as_ehoareS tc in
   let s1, s2 = s_split env i hs.ehs_s in
   let phi = ss_inv_rebind phi (fst hs.ehs_m) in
-  let a = f_eHoareS (snd hs.ehs_m) (ehs_pr hs) (stmt s1) phi in
-  let b = f_eHoareS (snd hs.ehs_m) phi (stmt s2) (ehs_po hs) in
+  (* normalise [phi] (bare value or guarded tuple) to a tuple *)
+  let phi_t = ehoare_as_tuple phi in
+  let a =
+    f_eHoareS_r { hs with ehs_s = stmt s1; ehs_po = phi_t } [@alert "-priv_pl"] in
+  let b =
+    f_eHoareS_r { hs with ehs_pr = phi_t; ehs_s = stmt s2 } [@alert "-priv_pl"] in
   FApi.xmutate1 tc `HlApp [a; b]
 
 let t_ehoare_seq = FApi.t_low2 "hoare-seq" t_ehoare_seq_r

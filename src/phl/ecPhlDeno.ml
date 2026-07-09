@@ -259,7 +259,7 @@ let process_ehoare_deno info tc =
 
   let pre, post =
     let hf = pf_as_ehoareF !!tc ax in
-      (ehf_pr hf, ehf_po hf)
+      (ehf_pr_val hf, ehf_po_val hf)
   in
 
   FApi.t_first (EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt) (t_ehoare_deno pre post tc)

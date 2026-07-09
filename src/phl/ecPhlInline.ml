@@ -179,7 +179,9 @@ let t_inline_hoare_r ~use_tuple sp tc =
 let t_inline_ehoare_r ~use_tuple sp tc =
   let ehs          = tc1_as_ehoareS tc in
   let (_,mt), stmt = LowInternal.inline ~use_tuple tc ehs.ehs_m sp ehs.ehs_s in
-  let concl        = f_eHoareS mt (ehs_pr ehs) stmt (ehs_po ehs) in
+  let concl        =
+    f_eHoareS_r { ehs with ehs_m = (fst ehs.ehs_m, mt); ehs_s = stmt }
+      [@alert "-priv_pl"] in
 
   FApi.xmutate1 tc `Inline [concl]
 

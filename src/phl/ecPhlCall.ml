@@ -259,8 +259,13 @@ let t_ehoare_call_core fpre fpost tc =
      tc_error !!tc "ehoare call core rule: wrong pre-condition %a instead %a"
        (EcPrinting.pp_form ppe) (ehs_pr hs).inv (EcPrinting.pp_form ppe) wppre.inv);
 
-  (* The function satisfies the specification *)
-  let f_concl = f_eHoareF fpre f fpost in
+  (* [fpre]/[fpost] are already tuple sides: build raw, carry [ehs_cmp] *)
+  let f_concl =
+    f_eHoareF_r { ehf_m   = fpre.m;
+                  ehf_pr  = ehoare_as_tuple fpre;
+                  ehf_f   = f;
+                  ehf_po  = ehoare_as_tuple fpost;
+                  ehf_cmp = hs.ehs_cmp } [@alert "-priv_pl"] in
   FApi.xmutate1 tc `HlCall [f_concl]
 
 
@@ -273,9 +278,10 @@ let t_ehoare_call fpre fpost tc =
 
 let t_ehoare_call_concave f fpre fpost tc =
   let _, _, _, _, _, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
+  let wppre_v = snd (ehoare_pair_split wppre) in
   let tcenv =
     EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last))
-     (map_ss_inv2 (fun wppre f -> f_app_simpl f [wppre] txreal) wppre f) tc in
+     (map_ss_inv2 (fun wppre f -> f_app_simpl f [wppre] txreal) wppre_v f) tc in
   let tcenv = FApi.t_swap_goals 0 1 tcenv in
   let t_call =
     FApi.t_seqsub (EcPhlConseq.t_ehoareS_concave f wppre wppost)
@@ -537,7 +543,7 @@ let process_call side info tc =
           let penv, qenv = LDecl.hoareF m f hyps in
           let pre  = TTC.pf_process_form !!tc penv txreal pre  in
           let post = TTC.pf_process_form !!tc qenv txreal post in
-          f_eHoareF {m;inv=pre} f {m;inv=post}
+          f_eHoareF ~cmp:hs.ehs_cmp {m;inv=pre} f {m;inv=post}
 
       | FbdHoareS _, Some _
       | FhoareS  _, Some _ ->
@@ -602,7 +608,7 @@ let process_call side info tc =
         let hyps = LDecl.push_active_ss me hyps in
         let inv = TTC.pf_process_form !!tc hyps txreal inv in
         let inv = {m; inv} in
-        (f_eHoareF inv f inv, Inv_ss inv)
+        (f_eHoareF ~cmp:hs.ehs_cmp inv f inv, Inv_ss inv)
 
     | FbdHoareS bhs ->
       let m = fst bhs.bhs_m in
@@ -725,7 +731,7 @@ let process_call_concave (fc, info) tc =
       match concl.f_node  with
       | FeHoareS hs ->
           let (_,f,_) = fst (tc1_last_call tc hs.ehs_s) in
-          (txreal, fun pre post -> f_eHoareF pre f post)
+          (txreal, fun pre post -> f_eHoareF ~cmp:hs.ehs_cmp pre f post)
 
       | _ -> tc_error !!tc "the conclusion is not a ehoare" in
 
@@ -734,7 +740,7 @@ let process_call_concave (fc, info) tc =
     match concl.f_node with
     | FeHoareS hs ->
         let (_,f,_) = fst (tc1_last_call tc hs.ehs_s) in
-        (txreal, fun inv -> f_eHoareF inv f inv)
+        (txreal, fun inv -> f_eHoareF ~cmp:hs.ehs_cmp inv f inv)
 
     | _ -> tc_error !!tc "the conclusion is not a ehoare" in
 

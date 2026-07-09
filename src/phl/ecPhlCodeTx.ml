@@ -493,7 +493,7 @@ let process_weakmem (side, id, params) tc =
 
     | FeHoareS hs ->
       let _, mt = bind hs.ehs_m in
-      f_eHoareS mt (ehs_pr hs) hs.ehs_s (ehs_po hs)
+      f_eHoareS_r { hs with ehs_m = (fst hs.ehs_m, mt) } [@alert "-priv_pl"]
 
     | FbdHoareS hs ->
       let _, mt = bind hs.bhs_m in
