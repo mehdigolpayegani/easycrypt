@@ -263,6 +263,7 @@ and eHoareF = {
   ehf_f   : EcPath.xpath;
   ehf_po  : form;
   [@alert priv_pl "Use the accessor function `ehf_po` instead of the field"]
+  ehf_cmp : hoarecmp;
 }
 
 and eHoareS = {
@@ -272,6 +273,7 @@ and eHoareS = {
   ehs_s   : stmt;
   ehs_po  : form;
   [@alert priv_pl "Use the accessor function `ehs_po` instead of the field"]
+  ehs_cmp : hoarecmp;
 }
 
 and bdHoareF = {

@@ -250,16 +250,18 @@ and sHoareS = {
 
 and eHoareF = {
   ehf_m   : memory;
-  ehf_pr  : form;
+  ehf_pr  : form;             (* (bool, xreal) tuple (P, f) of the precondition  *)
   ehf_f   : EcPath.xpath;
-  ehf_po  : form;
+  ehf_po  : form;             (* (bool, xreal) tuple (Q, g) of the postcondition *)
+  ehf_cmp : hoarecmp;         (* direction of the value comparison (le/eq/ge)    *)
 }
 
 and eHoareS = {
   ehs_m   : memenv;
-  ehs_pr  : form;
+  ehs_pr  : form;             (* (bool, xreal) tuple (P, f) of the precondition  *)
   ehs_s   : stmt;
-  ehs_po  : form;
+  ehs_po  : form;             (* (bool, xreal) tuple (Q, g) of the postcondition *)
+  ehs_cmp : hoarecmp;         (* direction of the value comparison (le/eq/ge)    *)
 }
 
 and bdHoareF = {
@@ -1066,12 +1068,14 @@ let ehf_equal hf1 hf2 =
   && f_equal hf1.ehf_po  hf2.ehf_po
   && EcPath.x_equal hf1.ehf_f hf2.ehf_f
   && mem_equal hf1.ehf_m hf2.ehf_m
+  && hf1.ehf_cmp = hf2.ehf_cmp
 
 let ehs_equal hs1 hs2 =
      f_equal hs1.ehs_pr  hs2.ehs_pr
   && f_equal hs1.ehs_po  hs2.ehs_po
   && s_equal hs1.ehs_s hs2.ehs_s
   && me_equal hs1.ehs_m hs2.ehs_m
+  && hs1.ehs_cmp = hs2.ehs_cmp
 
 let bhf_equal bhf1 bhf2 =
      f_equal bhf1.bhf_pr bhf2.bhf_pr
@@ -1149,15 +1153,19 @@ let hs_hash hs =
     (me_hash hs.hs_m)
 
 let ehf_hash hf =
-  Why3.Hashcons.combine3
-    (f_hash hf.ehf_pr) (f_hash hf.ehf_po)
-    (EcPath.x_hash hf.ehf_f) (mem_hash hf.ehf_m)
+  Why3.Hashcons.combine
+    (Why3.Hashcons.combine3
+       (f_hash hf.ehf_pr) (f_hash hf.ehf_po)
+       (EcPath.x_hash hf.ehf_f) (mem_hash hf.ehf_m))
+    (hcmp_hash hf.ehf_cmp)
 
 let ehs_hash hs =
-  Why3.Hashcons.combine3
-    (f_hash hs.ehs_pr) (f_hash hs.ehs_po)
-    (s_hash hs.ehs_s)
-    (me_hash hs.ehs_m)
+  Why3.Hashcons.combine
+    (Why3.Hashcons.combine3
+       (f_hash hs.ehs_pr) (f_hash hs.ehs_po)
+       (s_hash hs.ehs_s)
+       (me_hash hs.ehs_m))
+    (hcmp_hash hs.ehs_cmp)
 
 let bhf_hash bhf =
   Why3.Hashcons.combine_list f_hash

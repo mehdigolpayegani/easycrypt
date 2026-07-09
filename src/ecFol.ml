@@ -149,6 +149,41 @@ let f_b2xr  b = f_r2xr (f_b2r b)
 let f_xreal_inf = f_op CI.CI_Xreal.p_inf [] txreal
 
 (* -------------------------------------------------------------------- *)
+let ehoare_pair_split (si : ss_inv) : ss_inv * ss_inv =
+  match si.inv.f_node with
+  | Ftuple [g; v] -> ({ si with inv = g }, { si with inv = v })
+  | _ when EcTypes.ty_equal si.inv.f_ty txreal ->
+      (* a bare value carries an implicit [true] guard *)
+      ({ si with inv = f_true }, si)
+  | _ ->
+      ({ si with inv = f_proj si.inv 0 tbool },
+       { si with inv = f_proj si.inv 1 txreal })
+
+(* Normalise a supplied side (bare value or tuple) to the stored tuple form. *)
+let ehoare_as_tuple (si : ss_inv) : form =
+  let g, v = ehoare_pair_split si in f_tuple [g.inv; v.inv]
+
+(* Guard (boolean) projections of each tuple side. *)
+let ehf_prb hf = fst (ehoare_pair_split (ehf_pr hf))
+let ehf_pob hf = fst (ehoare_pair_split (ehf_po hf))
+let ehs_prb hs = fst (ehoare_pair_split (ehs_pr hs))
+let ehs_pob hs = fst (ehoare_pair_split (ehs_po hs))
+
+(* Value (xreal) projections of each tuple side. *)
+let ehf_pr_val hf = snd (ehoare_pair_split (ehf_pr hf))
+let ehf_po_val hf = snd (ehoare_pair_split (ehf_po hf))
+let ehs_pr_val hs = snd (ehoare_pair_split (ehs_pr hs))
+let ehs_po_val hs = snd (ehoare_pair_split (ehs_po hs))
+
+(* Directional value comparison: [f_xreal_cmp cmp a b] orients [a] against
+   [b] according to [cmp] (a <= b / a = b / a >= b). *)
+let f_xreal_cmp (cmp : hoarecmp) (a : form) (b : form) : form =
+  match cmp with
+  | FHle -> f_xreal_le a b
+  | FHge -> f_xreal_le b a
+  | FHeq -> f_eq a b
+
+(* -------------------------------------------------------------------- *)
 let tmap aty bty =
   tconstr CI.CI_Map.p_map [aty; bty]
 

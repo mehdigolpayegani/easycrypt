@@ -291,20 +291,17 @@ let f_hoareF pr hf_f po  =
 let f_eHoareS_r hs = mk_form (FeHoareS hs) tbool
 let f_eHoareF_r hf = mk_form (FeHoareF hf) tbool
 
-let f_eHoareS ehs_mt ehs_pr ehs_s ehs_po =
+let f_eHoareS ?(prb = f_true) ?(pob = f_true) ?(cmp = FHge) ehs_mt ehs_pr ehs_s ehs_po =
   assert (ehs_pr.m = ehs_po.m);
-  f_eHoareS_r { ehs_m=(ehs_pr.m, ehs_mt); ehs_pr=ehs_pr.inv; ehs_s;
-    ehs_po=ehs_po.inv; } [@alert "-priv_pl"]
+  f_eHoareS_r { ehs_m=(ehs_pr.m, ehs_mt);
+    ehs_pr=f_tuple [prb; ehs_pr.inv]; ehs_s;
+    ehs_po=f_tuple [pob; ehs_po.inv]; ehs_cmp=cmp } [@alert "-priv_pl"]
 
-let f_eHoareF ehf_pr ehf_f ehf_po =
+let f_eHoareF ?(prb = f_true) ?(pob = f_true) ?(cmp = FHge) ehf_pr ehf_f ehf_po =
   assert (ehf_pr.m = ehf_po.m);
-  f_eHoareF_r { ehf_m=ehf_pr.m; ehf_pr=ehf_pr.inv; ehf_f; ehf_po=ehf_po.inv; } [@alert "-priv_pl"]
-
-(* -------------------------------------------------------------------- *)
-
-let f_eHoare ehf_pr ehf_f ehf_po =
-  assert (ehf_pr.m = ehf_po.m);
-  f_eHoareF_r { ehf_m=ehf_pr.m; ehf_pr=ehf_pr.inv; ehf_f; ehf_po=ehf_po.inv; } [@alert "-priv_pl"]
+  f_eHoareF_r { ehf_m=ehf_pr.m;
+    ehf_pr=f_tuple [prb; ehf_pr.inv]; ehf_f;
+    ehf_po=f_tuple [pob; ehf_po.inv]; ehf_cmp=cmp } [@alert "-priv_pl"]
 
 (* -------------------------------------------------------------------- *)
 let f_bdHoareS_r bhs = mk_form (FbdHoareS bhs) tbool
@@ -495,12 +492,12 @@ let f_map gt g fp =
   | FeHoareF hf ->
       let pr' = map_ss_inv1 g (ehf_pr hf) in
       let po' = map_ss_inv1 g (ehf_po hf) in
-        f_eHoareF pr' hf.ehf_f po'
+        f_eHoareF_r { hf with ehf_pr = pr'.inv; ehf_po = po'.inv } [@alert "-priv_pl"]
 
   | FeHoareS hs ->
       let pr' = map_ss_inv1 g (ehs_pr hs) in
       let po' = map_ss_inv1 g (ehs_po hs) in
-        f_eHoareS (snd hs.ehs_m) pr' hs.ehs_s po'
+        f_eHoareS_r { hs with ehs_pr = pr'.inv; ehs_po = po'.inv } [@alert "-priv_pl"]
 
   | FbdHoareF bhf ->
       let pr' = map_ss_inv1 g (bhf_pr bhf) in

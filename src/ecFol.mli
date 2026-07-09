@@ -82,6 +82,20 @@ val f_b2r   : form -> form
 val f_b2xr  : form -> form
 val f_xreal_inf : form
 
+(* eHoare guarded sides: split a stored (bool, xreal) tuple side into its
+   boolean guard and xreal value, and orient a value comparison by direction. *)
+val ehoare_pair_split : ss_inv -> ss_inv * ss_inv
+val ehoare_as_tuple : ss_inv -> form
+val ehf_prb : eHoareF -> ss_inv
+val ehf_pob : eHoareF -> ss_inv
+val ehs_prb : eHoareS -> ss_inv
+val ehs_pob : eHoareS -> ss_inv
+val ehf_pr_val : eHoareF -> ss_inv
+val ehf_po_val : eHoareF -> ss_inv
+val ehs_pr_val : eHoareS -> ss_inv
+val ehs_po_val : eHoareS -> ss_inv
+val f_xreal_cmp : hoarecmp -> form -> form -> form
+
 (* soft-constructor - map *)
 val f_map_cst : EcTypes.ty -> form -> form
 val f_map_get : form -> form -> EcTypes.ty -> form
