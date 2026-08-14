@@ -3155,6 +3155,18 @@ let pp_post (ppe : PPEnv.t) ?prpo fmt post =
     fmt post None
 
 (* -------------------------------------------------------------------- *)
+(* Multi-line goal-view of one eHoare side: the label once, then the guard
+   brace [{g | v}]; falls back to the plain bare-value display ([pp_lbl]) when
+   the guard is [true] or the side is not a (guard, value) tuple. *)
+let pp_ehoare_disp lbl pp_lbl (ppe : PPEnv.t) ?prpo fmt (side : form) =
+  match side.f_node with
+  | Ftuple [g; v] when not (f_equal g f_true) ->
+      Format.fprintf fmt "@[<hov 2>%s =@ {@[<hov 2>%a@] |@ @[<hov 2>%a@]}@]\n%!"
+        lbl (pp_form ppe) g (pp_form ppe) v
+  | _ ->
+      pp_lbl ppe ?prpo fmt (ehoare_disp_form side)
+
+(* -------------------------------------------------------------------- *)
 let pp_poe (ppe : PPEnv.t) ?prpo (fmt: Format.formatter) poe =
   let pp_branch (p : EcPath.path) (f : form) =
     let bd, br = EcFol.decompose_lambda f in
@@ -3220,11 +3232,11 @@ let pp_eHoareF (ppe : PPEnv.t) ?prpo fmt hf =
   let ppepr = PPEnv.create_and_push_mem ppe ~active:true mepr in
   let ppepo = PPEnv.create_and_push_mem ppe ~active:true mepo in
 
-  Format.fprintf fmt "%a@\n%!" (pp_pre ppepr ?prpo) (ehoare_disp_form (ehf_pr hf).inv);
+  Format.fprintf fmt "%a@\n%!" (pp_ehoare_disp "pre" pp_pre ppepr ?prpo) (ehf_pr hf).inv;
   let pm = debug_mode || hf.ehf_m.id_symb <> "&hr" in
   let scmp = " [" ^ string_of_hcmp hf.ehf_cmp ^ "]" in
   Format.fprintf fmt "    %a %a%s@\n%!" (pp_funname ppe) hf.ehf_f (pp_pl_mem_binding pm ppe) hf.ehf_m scmp;
-  Format.fprintf fmt "@\n%a%!" (pp_post ppepo ?prpo) (ehoare_disp_form (ehf_po hf).inv)
+  Format.fprintf fmt "@\n%a%!" (pp_ehoare_disp "post" pp_post ppepo ?prpo) (ehf_po hf).inv
 
 (* -------------------------------------------------------------------- *)
 
@@ -3237,12 +3249,12 @@ let pp_eHoareS (ppe : PPEnv.t) ?prpo fmt hs =
     Format.fprintf fmt "Context : %a: %a%s@\n%!" (pp_mem ppe) (fst hs.ehs_m)
                                                (pp_memtype ppe) (snd hs.ehs_m) scmp;
     Format.fprintf fmt "@\n%!";
-    Format.fprintf fmt "%a%!" (pp_ehoare_side (pp_pre ppef ?prpo)) (ehs_pr hs).inv;
-    
+    Format.fprintf fmt "%a%!" (pp_ehoare_disp "pre" pp_pre ppef ?prpo) (ehs_pr hs).inv;
+
     Format.fprintf fmt "@\n%!";
     Format.fprintf fmt "%a" (pp_node `Left) ppnode;
     Format.fprintf fmt "@\n%!";
-    Format.fprintf fmt "%a%!" (pp_ehoare_side (pp_post ppef ?prpo)) (ehs_po hs).inv
+    Format.fprintf fmt "%a%!" (pp_ehoare_disp "post" pp_post ppef ?prpo) (ehs_po hs).inv
 
 
 (* -------------------------------------------------------------------- *)
