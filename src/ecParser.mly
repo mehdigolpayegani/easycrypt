@@ -2710,6 +2710,9 @@ while_tac_info:
 | inv=sform vrnt=sform
     { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = None; } }
 
+| inv=sform v=sform beta=sform
+    { { wh_inv = inv; wh_vrnt = Some v; wh_bds = Some (`Mult beta); } }
+
 | inv=sform vrnt=sform k=sform eps=sform
     { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = Some (`Bd (k, eps)); } }
 

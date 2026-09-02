@@ -678,7 +678,7 @@ type pcond_info = [
 type while_info = {
   wh_inv  : pformula;
   wh_vrnt : pformula option;
-  wh_bds  : [`Bd of pformula pair] option;
+  wh_bds  : [`Bd of pformula pair | `Mult of pformula] option;
 }
 
 (* -------------------------------------------------------------------- *)

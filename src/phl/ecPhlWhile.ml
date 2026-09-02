@@ -96,31 +96,148 @@ let check_single_stmt tc s =
 let t_ehoare_while_core tc =
   let hyps = FApi.tc1_hyps tc in
   let hs = tc1_as_ehoareS tc in
+  (* The invariant-only rule is sound for upper bounds; lower bounds require
+     a termination argument. *)
+  if hs.ehs_cmp <> FHge then
+    tc_error !!tc
+      "the standard ehoare while rule supports only upper-bound ([>=]) \
+       judgments; use the multiplicative-decay while rule for lower bounds";
   let (e, c), s = tc1_last_while tc hs.ehs_s in
   check_single_stmt tc s;
-  let (m, mt) = hs.ehs_m in
+  let (m, _mt) = hs.ehs_m in
   let e = ss_inv_of_expr m e in
+  (* Add the loop condition to the guard: the exit is {P /\ !e | v} and the
+     body premise is {P /\ e | v} c {P | v}. *)
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let exp_po =
+    f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] in
   if not (EcReduction.ss_inv_alpha_eq hyps (ehs_po hs)
-      (map_ss_inv2 f_interp_ehoare_form (map_ss_inv1 f_not e) (ehs_pr hs))) then
+            { (ehs_po hs) with inv = exp_po }) then
     tc_error !!tc "ehoare while rule: wrong post-condition";
-  (* the body preserves the invariant *)
-  let b_pre  = map_ss_inv2 f_interp_ehoare_form e (ehs_pr hs) in
-  let b_concl = f_eHoareS mt b_pre c (ehs_pr hs) in
+  let b_concl =
+    f_eHoareS_r
+      { hs with ehs_pr = f_tuple [f_and_simpl pre_g e.inv; pre_v]; ehs_s = c;
+                ehs_po = (ehs_pr hs).inv }
+      [@alert "-priv_pl"] in
   FApi.xmutate1 tc `While [b_concl]
 
-let t_ehoare_while inv tc =
+let t_ehoare_while (inv : ss_inv) tc =
   let hs = tc1_as_ehoareS tc in
   let (e,_), _ = tc1_last_while tc hs.ehs_s in
   let m = EcMemory.memory hs.ehs_m in
   let e = ss_inv_of_expr m e in
+  (* A bare value invariant is normalized to {true | inv}. *)
+  let inv_t  = { inv with inv = f_tuple [f_true; inv.inv] } in
+  let post_t =
+    { inv with inv = f_tuple [f_not e.inv; inv.inv] } in
   let tc =
     FApi.t_rotate `Left 1 (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) inv tc) in
   FApi.t_sub
-    [(EcPhlConseq.t_ehoareS_conseq inv (map_ss_inv2 f_interp_ehoare_form (map_ss_inv1 f_not e) inv)) @+
+    [(EcPhlConseq.t_ehoareS_conseq inv_t post_t) @+
        [t_trivial;
         t_id;
         t_ehoare_while_core ];
      t_id] tc
+
+(* -------------------------------------------------------------------- *)
+(* Lower-bound While-Mult for {P | E} while b do c {P /\ !b | E},
+   with decay witness V and factor beta. *)
+let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
+  let env  = FApi.tc1_env tc in
+  let hyps = FApi.tc1_hyps tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp <> FHle then
+    tc_error !!tc
+      "the multiplicative-decay while rule applies only to lower-bound \
+       ([<=]) judgments";
+  let (e, c), s = tc1_last_while tc hs.ehs_s in
+  check_single_stmt tc s;
+  let (m, _mt) = hs.ehs_m in
+  (* beta must be loop-constant so that beta^i ** V is a geometric witness
+     sequence. *)
+  if not (PV.indep env (s_write env c)
+            (PV.fv env (EcMemory.memory hs.ehs_m) beta.inv)) then
+    tc_error !!tc
+      "the multiplicative-decay factor cannot depend on variables \
+       written by the loop body";
+  let e = ss_inv_of_expr m e in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  (* The core expects the canonical exit post {P /\ !b | E}. *)
+  let exp_po = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] in
+  if not (EcReduction.ss_inv_alpha_eq hyps (ehs_po hs)
+            { (ehs_po hs) with inv = exp_po }) then
+    tc_error !!tc "ehoare while-mult rule: wrong post-condition";
+  let p_and_b = f_and_simpl pre_g e.inv in
+  (* Use Xreal scalar multiplication: unlike xreal multiplication,
+     0 ** oo = 0. *)
+  let f_xsmul c x =
+    f_app (f_op EcCoreLib.CI_Xreal.p_xsmul [] (toarrow [trealp; txreal] txreal))
+      [c; x] txreal in
+  let f_is_real x =
+    f_app (f_op EcCoreLib.CI_Xreal.p_is_real [] (toarrow [txreal] tbool)) [x] tbool in
+  let beta_v = f_xsmul (f_r2rp beta.inv) v.inv in
+  let mem_prop body =
+    EcSubst.f_forall_mems_ss_inv hs.ehs_m { (ehs_pr hs) with inv = body } in
+  (* (1) The body preserves the lower invariant. *)
+  let g1 =
+    f_eHoareS_r
+      { hs with ehs_pr = f_tuple [p_and_b; pre_v]; ehs_s = c;
+                ehs_po = f_tuple [pre_g; pre_v]; ehs_cmp = FHle }
+      [@alert "-priv_pl"] in
+  (* (2) P /\ b => E <= V. *)
+  let g2 = mem_prop (f_imp_simpl p_and_b (f_xreal_le pre_v v.inv)) in
+  (* (3) V decays by beta, expressed as an upper bound. *)
+  let g3 =
+    f_eHoareS_r
+      { hs with ehs_pr = f_tuple [p_and_b; beta_v]; ehs_s = c;
+                ehs_po = f_tuple [f_true; v.inv]; ehs_cmp = FHge }
+      [@alert "-priv_pl"] in
+  (* (4) 0 <= beta < 1. *)
+  let g4 = mem_prop (f_and (f_real_le f_r0 beta.inv) (f_real_lt beta.inv f_r1)) in
+  (* (5) V is finite on active states. *)
+  let g5 = mem_prop (f_imp_simpl p_and_b (f_is_real v.inv)) in
+  FApi.xmutate1 tc `While [g1; g2; g3; g4; g5]
+
+(* Canonicalize the exit post with consequence before applying While-Mult. *)
+let t_ehoare_while_mult (v : ss_inv) (beta : ss_inv) tc =
+  let hyps = FApi.tc1_hyps tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp <> FHle then
+    tc_error !!tc
+      "the multiplicative-decay while rule applies only to lower-bound \
+       ([<=]) judgments";
+  let (e, _), _ = tc1_last_while tc hs.ehs_s in
+  let m = EcMemory.memory hs.ehs_m in
+  let e = ss_inv_of_expr m e in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let canon_post =
+    { (ehs_po hs) with
+      inv = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] } in
+  if EcReduction.ss_inv_alpha_eq hyps (ehs_po hs) canon_post then
+    t_ehoare_while_mult_core v beta tc
+  else
+    (* Bridge the canonical exit post to the user post. *)
+    (EcPhlConseq.t_ehoareS_conseq (ehs_pr hs) canon_post @+
+       [t_trivial;
+        t_id;
+        t_ehoare_while_mult_core v beta]) tc
+
+(* Split an initialization prefix from the final loop and apply While-Mult to
+   the loop goal. *)
+let t_ehoare_while_mult_seq
+    (loop_inv : ss_inv) (v : ss_inv) (beta : ss_inv) tc =
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp <> FHle then
+    tc_error !!tc
+      "the multiplicative-decay while rule applies only to lower-bound \
+       ([<=]) judgments";
+  let tc =
+    FApi.t_rotate `Left 1
+      (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) loop_inv tc) in
+  FApi.t_sub
+    [t_ehoare_while_mult v beta;
+     t_id]
+    tc
 
 (* -------------------------------------------------------------------- *)
 (* rule >=, <=, =, with a stricly decreasing variant *)
@@ -560,9 +677,50 @@ let process_while side winfos tc =
       | _    -> tc_error !!tc "invalid arguments"
     end
 
-  | FeHoareS _ ->
-      let _, inv = TTC.tc1_process_Xhl_formula_xreal tc phi in
-      t_ehoare_while inv tc
+  | FeHoareS hs -> begin
+      (* Standard while handles upper bounds; While-Mult handles lower bounds. *)
+      match hs.ehs_cmp with
+      | FHge -> begin
+          match vrnt, bds with
+          | None, None ->
+              let _, inv = TTC.tc1_process_Xhl_formula_xreal tc phi in
+              t_ehoare_while inv tc
+          | _ ->
+              tc_error !!tc
+                "upper-bound ([>=]) while takes a single value invariant: \
+                 [while E]"
+        end
+      | FHle -> begin
+          match vrnt, bds with
+          | Some beta_pf, None ->
+              (* [while V beta] on a bare loop. *)
+              let _, v    = TTC.tc1_process_Xhl_formula_xreal tc phi in
+              let _, beta = TTC.tc1_process_Xhl_form tc treal beta_pf in
+              t_ehoare_while_mult v beta tc
+          | Some v_pf, Some (`Mult beta_pf) ->
+              (* [while (P,E) V beta] splits a prefix using a guarded loop
+                 invariant; a bare E is normalized to {true | E}. *)
+              let _, loop_inv =
+                match EcLocation.unloc phi with
+                | EP.PFtuple [_; _] ->
+                    TTC.tc1_process_Xhl_form tc (ttuple [tbool; txreal]) phi
+                | _ ->
+                    TTC.tc1_process_Xhl_formula_xreal tc phi
+              in
+              let _, v    = TTC.tc1_process_Xhl_formula_xreal tc v_pf in
+              let _, beta = TTC.tc1_process_Xhl_form tc treal beta_pf in
+              t_ehoare_while_mult_seq loop_inv v beta tc
+          | _ ->
+              tc_error !!tc
+                "lower-bound ([<=]) while (multiplicative-decay) takes a decay \
+                 witness and factor: [while V beta], optionally preceded by a \
+                 loop invariant: [while (P, E) V beta]"
+        end
+      | FHeq ->
+          tc_error !!tc
+            "the while rule does not support equality ([=]) judgments; use an \
+             upper ([>=]) or lower ([<=]) bound"
+    end
 
   | FbdHoareS _ -> begin
       match vrnt, bds with
@@ -584,20 +742,23 @@ let process_while side winfos tc =
 
       | None, Some _ ->
         tc_error !!tc "invalid arguments"
+
+      | Some _, Some (`Mult _) ->
+        tc_error !!tc "invalid arguments"
   end
 
   | FequivS _ -> begin
-      match side, vrnt with
-      | None, None ->
+      match side, vrnt, bds with
+      | None, None, None ->
           t_equiv_while (TTC.tc1_process_prhl_formula tc phi) tc
 
-      | Some side, Some vrnt ->
+      | Some side, Some vrnt, None ->
           t_equiv_while_disj side
             (TTC.tc1_process_prhl_form    tc tint vrnt)
             (TTC.tc1_process_prhl_formula tc phi)
             tc
 
-      | Some side, None ->
+      | Some side, None, None ->
         t_equiv_ll_while_disj side
             (TTC.tc1_process_prhl_formula tc phi)
             tc
