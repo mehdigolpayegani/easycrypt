@@ -126,10 +126,11 @@ let t_ehoare_while (inv : ss_inv) tc =
   let (e,_), _ = tc1_last_while tc hs.ehs_s in
   let m = EcMemory.memory hs.ehs_m in
   let e = ss_inv_of_expr m e in
-  (* A bare value invariant is normalized to {true | inv}. *)
-  let inv_t  = { inv with inv = f_tuple [f_true; inv.inv] } in
+  let inv_g, inv_v = ehoare_pair_split inv in
+  let inv_t  = { inv with inv = f_tuple [inv_g.inv; inv_v.inv] } in
   let post_t =
-    { inv with inv = f_tuple [f_not e.inv; inv.inv] } in
+    { inv with
+      inv = f_tuple [f_and_simpl inv_g.inv (f_not e.inv); inv_v.inv] } in
   let tc =
     FApi.t_rotate `Left 1 (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) inv tc) in
   FApi.t_sub
@@ -683,12 +684,18 @@ let process_while side winfos tc =
       | FHge -> begin
           match vrnt, bds with
           | None, None ->
-              let _, inv = TTC.tc1_process_Xhl_formula_xreal tc phi in
+              let _, inv =
+                match EcLocation.unloc phi with
+                | EP.PFtuple [_; _] ->
+                    TTC.tc1_process_Xhl_form tc (ttuple [tbool; txreal]) phi
+                | _ ->
+                    TTC.tc1_process_Xhl_formula_xreal tc phi
+              in
               t_ehoare_while inv tc
           | _ ->
               tc_error !!tc
-                "upper-bound ([>=]) while takes a single value invariant: \
-                 [while E]"
+                "upper-bound ([>=]) while takes a single invariant: \
+                 [while E] or the guarded form [while (P, E)]"
         end
       | FHle -> begin
           match vrnt, bds with
