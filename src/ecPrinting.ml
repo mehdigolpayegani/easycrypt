@@ -1521,21 +1521,12 @@ let string_of_hcmp = function
   | FHge -> ">="
 
 (* An eHoare side is stored as a (bool, xreal) tuple (guard, value).
-   Print just the value when the guard is [true] (the unconditional case),
-   otherwise print it as [{guard | value}], matching the input syntax. *)
+   Always print the tuple explicitly, including the unconditional case
+   [{true | value}], so the displayed judgment has one canonical shape. *)
 let pp_ehoare_side (pp : Format.formatter -> form -> unit) fmt (f : form) =
   match f.f_node with
-  | Ftuple [g; v] when f_equal g f_true -> pp fmt v
   | Ftuple [g; v] -> Format.fprintf fmt "{%a |@ %a}" pp g pp v
   | _ -> pp fmt f
-
-(* Form shown for an eHoare side in the multi-line goal view: the bare value
-   when the guard is [true] (identical to the unguarded display), otherwise
-   the whole (guard, value) tuple. *)
-let ehoare_disp_form (f : form) : form =
-  match f.f_node with
-  | Ftuple [g; v] when f_equal g f_true -> v
-  | _ -> f
 
 (* -------------------------------------------------------------------- *)
 let string_of_locality = function
@@ -3155,16 +3146,16 @@ let pp_post (ppe : PPEnv.t) ?prpo fmt post =
     fmt post None
 
 (* -------------------------------------------------------------------- *)
-(* Multi-line goal-view of one eHoare side: the label once, then the guard
-   brace [{g | v}]; falls back to the plain bare-value display ([pp_lbl]) when
-   the guard is [true] or the side is not a (guard, value) tuple. *)
+(* Multi-line goal-view of one eHoare side: always display a stored tuple as
+   [{g | v}], including [{true | v}].  The fallback is only for legacy or
+   otherwise non-canonical internal forms. *)
 let pp_ehoare_disp lbl pp_lbl (ppe : PPEnv.t) ?prpo fmt (side : form) =
   match side.f_node with
-  | Ftuple [g; v] when not (f_equal g f_true) ->
+  | Ftuple [g; v] ->
       Format.fprintf fmt "@[<hov 2>%s =@ {@[<hov 2>%a@] |@ @[<hov 2>%a@]}@]\n%!"
         lbl (pp_form ppe) g (pp_form ppe) v
   | _ ->
-      pp_lbl ppe ?prpo fmt (ehoare_disp_form side)
+      pp_lbl ppe ?prpo fmt side
 
 (* -------------------------------------------------------------------- *)
 let pp_poe (ppe : PPEnv.t) ?prpo (fmt: Format.formatter) poe =
