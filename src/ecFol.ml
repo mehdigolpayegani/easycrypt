@@ -136,6 +136,9 @@ let f_Ep ty d f = f_app (fop_Ep ty) [d; f] txreal
 let fop_concave_incr = f_op CI.CI_Xreal.p_concave_incr [] (tfun (tfun txreal txreal) tbool)
 let f_concave_incr f = f_app fop_concave_incr [f] tbool
 
+let fop_convex_incr = f_op CI.CI_Xreal.p_convex_incr [] (tfun (tfun txreal txreal) tbool)
+let f_convex_incr f = f_app fop_convex_incr [f] tbool
+
 let f_op_rp2xr = f_op CI.CI_Xreal.p_rp [] (tfun trealp txreal)
 let f_op_of_real  = f_op CI.CI_Xreal.p_of_real [] (tfun treal trealp)
 

@@ -220,6 +220,29 @@ proof. by rewrite /(%pos) ge0_mu. qed.
 
 hint simplify to_pos_mu.
 
+lemma addrp_eq0l (u v : realp) : u + v = 0%rp => u = 0%rp.
+proof.
+  move=> h; have := congr1 Rp.to_real _ _ h.
+  rewrite to_realD of_realKd_ge0 // => hs.
+  have hu0 : u%r = 0%r by smt(to_realP).
+  by rewrite -(to_realKd u) hu0.
+qed.
+
+lemma mulrp_eq0 (a b : realp) : a * b = 0%rp => a = 0%rp \/ b = 0%rp.
+proof.
+  move=> h; have := congr1 Rp.to_real _ _ h.
+  rewrite /Rp.( * ) !of_realKd_ge0 //; 1: smt(to_realP).
+  move=> hs; case: (a%r = 0%r) => ha.
+  + by left; rewrite -(to_realKd a) ha.
+  by right; rewrite -(to_realKd b); smt(to_realP).
+qed.
+
+lemma rp_int_neq0 (n : int) : 0 < n => n%rp <> 0%rp.
+proof.
+  move=> hn; apply/negP => h.
+  have := congr1 Rp.to_real _ _ h; rewrite !of_realKd_ge0 //; smt().
+qed.
+
 end Rp.
 export Rp.
 
@@ -506,6 +529,22 @@ proof. by case: x y => [x|] [y|]. qed.
 lemma to_realM (x y : xreal) : 
   to_real (x * y) = to_real x * to_real y.
 proof. by case: x y => [x|] [y|]. qed.
+
+lemma xaddm_eq0 (a b : xreal) : a + b = 0%xr => a = 0%xr /\ b = 0%xr.
+proof.
+  case: a => [x|]; last by [].
+  case: b => [y|]; last by [].
+  move=> /= h; split.
+  + by apply (addrp_eq0l x y).
+  by apply (addrp_eq0l y x); rewrite addrpC.
+qed.
+
+lemma xmulr_eq0 (a : xreal) (c : realp) :
+  c <> 0%rp => a * c%xr = 0%xr => a = 0%xr.
+proof.
+  case: a => [x|] //= hc h.
+  by have := mulrp_eq0 x c h; smt().
+qed.
 
 end Rpbar. export Rpbar.
 
@@ -1185,6 +1224,136 @@ lemma concave_incr_if (b:bool) (f1 f2: xreal -> xreal) :
 proof. by case b. qed.
 
 hint solve 2 concave_incr : concave_incr_cxr concave_incr_if.
+
+(* -------------------------------------------------------------------- *)
+(* Convexity                                                            *)
+
+op convex (f:xreal -> xreal) =
+  forall t, 0%r <= t <= 1%r =>
+  forall x y,
+    f (t%xr * x + (1.0 - t)%xr * y) <= t%xr * f x + (1.0 - t)%xr * f y.
+
+lemma convex_cst (c:xreal) : convex (fun x => c).
+proof. rewrite /convex /=; case: c => //= /#. qed.
+
+lemma convex_id : convex (fun x => x).
+proof. by rewrite /convex. qed.
+
+lemma convexD f1 f2 :
+  convex f1 => convex f2 => convex (fun x => f1 x + f2 x).
+proof.
+  rewrite /convex => h1 h2 t ht x y.
+  apply: (Rpbar.xle_trans ((t%xr * f1 x + (1%r - t)%xr * f1 y)
+                         + (t%xr * f2 x + (1%r - t)%xr * f2 y))).
+  + by apply xler_add; [apply h1 | apply h2].
+  rewrite !mulmDr -!addmA xler_addl (addmC (_ * f1 y) (Rpbar.(+) _ _)).
+  by rewrite -!addmA xler_addl addmC.
+qed.
+
+lemma convexMr f c :
+  convex f => convex (fun x => f x * c).
+proof.
+  rewrite /convex => h t ht x y.
+  rewrite !mulmA -mulmDl; apply/xler_mulr/h/ht.
+qed.
+
+lemma convexMl f c :
+  convex f => convex (fun x => c * f x).
+proof.
+  rewrite /convex => h t ht x y.
+  by rewrite !(mulmC c); apply (convexMr f c h).
+qed.
+
+hint solve 0 convex : convex_cst convex_id convexD convexMr convexMl.
+
+(* -------------------------------------------------------------------- *)
+(* Side-condition of the LOWER-bound ([<=]) eHoare consequence          *)
+(* transform.  The name mirrors [concave_incr], but convexity and       *)
+(* monotonicity alone are not sound here; two more conjuncts are needed:*)
+(*                                                                      *)
+(* - [f 0%xr = 0%xr]: judgments range over SUB-distributions, so a      *)
+(*   non-zero constant breaks the bound when [weight d < 1] (e.g.       *)
+(*   [dnull]).                                                          *)
+(*                                                                      *)
+(* - [cont_at_oo]: rules out [fun x => x * 0%xr], which is 0 on every   *)
+(*   real but [oo] at [oo], and so breaks the bound when [Ep] of finite *)
+(*   values diverges.                                                   *)
+
+op cont_at_oo (f : xreal -> xreal) =
+  (forall (r : realp), f r%xr = 0%xr) => f oo = 0%xr.
+
+op convex_incr (f : xreal -> xreal) =
+  convex f /\ increasing f /\ f 0%xr = 0%xr /\ cont_at_oo f.
+
+lemma convex_incr_zero : convex_incr (fun (_ : xreal) => 0%xr).
+proof.
+  split; 1: apply convex_cst.
+  split; 1: apply increasing_cst.
+  by split.
+qed.
+
+lemma convex_incr_id : convex_incr (fun (x : xreal) => x).
+proof.
+  split; 1: apply convex_id.
+  split; 1: apply increasing_id.
+  split; 1: by [].
+  by move=> h; have := h 1%rp => /=; smt().
+qed.
+
+lemma convex_incrD f1 f2 :
+  convex_incr f1 => convex_incr f2 =>
+  convex_incr (fun x => f1 x + f2 x).
+proof.
+  rewrite /convex_incr.
+  move=> [c1 [i1 [z1 o1]]] [c2 [i2 [z2 o2]]].
+  split; 1: by apply convexD.
+  split; 1: by apply increasingD.
+  split; 1: by rewrite /= z1 z2.
+  move=> h /=.
+  have e1 : forall (r : realp), f1 r%xr = 0%xr.
+  + by move=> r; have /xaddm_eq0 [] := h r.
+  have e2 : forall (r : realp), f2 r%xr = 0%xr.
+  + by move=> r; have /xaddm_eq0 [_ ?] := h r.
+  by rewrite (o1 e1) (o2 e2).
+qed.
+
+lemma convex_incrMr f (c : realp) :
+  c <> 0%rp => convex_incr f => convex_incr (fun x => f x * c%xr).
+proof.
+  rewrite /convex_incr.
+  move=> hc [cv [ic [z o]]].
+  split; 1: by apply convexMr.
+  split.
+  + by apply (increasingM f (fun (_:xreal) => c%xr)) => //; apply increasing_cst.
+  split; 1: by rewrite /= z.
+  move=> h /=.
+  have e : forall (r : realp), f r%xr = 0%xr.
+  + by move=> r; apply (xmulr_eq0 _ c) => //; apply h.
+  by rewrite (o e).
+qed.
+
+lemma convex_incrMl f (c : realp) :
+  c <> 0%rp => convex_incr f => convex_incr (fun x => c%xr * f x).
+proof.
+  move=> hc hf.
+  have -> : (fun x => c%xr * f x) = (fun x => f x * c%xr).
+  + by apply fun_ext => x; rewrite mulmC.
+  by apply convex_incrMr.
+qed.
+
+lemma convex_incr_if (b : bool) f1 f2 :
+  convex_incr f1 => convex_incr f2 =>
+  convex_incr (fun x => if b then f1 x else f2 x).
+proof. by case b. qed.
+
+hint solve 0 convex_incr : convex_incr_zero convex_incr_id rp_int_neq0.
+hint solve 1 convex_incr :
+  convex_incrD convex_incrMr convex_incrMl convex_incr_if.
+
+(* TODO: formally prove the countable Jensen inequality
+     convex_incr f => f (Ep d g) <= Ep d (fun x => f (g x)).
+   This is the lower-bound counterpart of the Jensen TODO for [concave]
+   above. *)
 
 (* -------------------------------------------------------------------- *)
 lemma trans_help P Q f : (P => Q) => (P `|` f) = oo \/ Q.

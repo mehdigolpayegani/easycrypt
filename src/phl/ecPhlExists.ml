@@ -38,9 +38,15 @@ let get_to_gens fs =
 (* -------------------------------------------------------------------- *)
 let t_hr_exists_elim_r ?(bound : int option) (tc : tcenv1) =
   let pre = tc1_get_pre tc in
+  let destr f =
+    try  destr_exists_prenex ?bound f
+    with DestrError _ -> [], f in
   let bd, pre' =
-    try  destr_exists_prenex ?bound (inv_of_inv pre)
-    with DestrError _ -> [], (inv_of_inv pre) in
+    match (FApi.tc1_goal tc).f_node, (inv_of_inv pre).f_node with
+    (* eHoare: the existential lives in the guard *)
+    | (FeHoareF _ | FeHoareS _), Ftuple [g; v] ->
+        let bd, g = destr g in bd, f_tuple [g; v]
+    | _ -> destr (inv_of_inv pre) in
   let pre = map_inv1 (fun _ -> pre') pre in
   let concl = f_forall bd (set_pre ~pre (FApi.tc1_goal tc)) in
   FApi.xmutate1 tc `HlExists [concl]
@@ -63,8 +69,16 @@ let t_hr_exists_intro_r fs tc =
       | [] -> map_inv1 (fun _ -> f_true) pre1
       | _ -> map_inv f_ands eqs in
     if is_ehoare then
-      map_inv2 f_interp_ehoare_form (map_inv1 (f_exists bd) eqs) pre1
-    else 
+      (* the existential goes into the guard, the value is unchanged *)
+      map_inv2
+        (fun eqs side ->
+           let g, v =
+             match side.f_node with
+             | Ftuple [g; v] -> g, v
+             | _ -> f_true, side in
+           f_tuple [f_exists bd (f_and eqs g); v])
+        eqs pre1
+    else
       map_inv1 (f_exists bd) (map_inv2 f_and eqs pre1) in
 
   let h = LDecl.fresh_id hyps "h" in
@@ -91,9 +105,9 @@ let t_hr_exists_intro_r fs tc =
 
   let t_exists =
     if is_ehoare then
-       t_intros_i ms @!
-       EcHiGoal.t_apply_prept (PT.Prept.uglob EcCoreLib.CI_Xreal.p_xle_cxr_l) @+
-       [ t_exists_intro_s args @! t_trivial;
+       (* goal: [g =>] (exists x, x = f /\ g) /\ v cmp v *)
+       t_intros_i ms @! FApi.t_try (t_intros_i [h]) @! t_split @+
+       [ t_exists_intro_s args @! t_split @+ [t_reflex; t_trivial];
          t_trivial]
     else FApi.t_seqs  [t_intros_i (ms@[h]); t_exists_intro_s args; t_apply_hyp h]
   in

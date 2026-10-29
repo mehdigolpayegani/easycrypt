@@ -673,7 +673,7 @@ let t_bdHoareF_conseq_nm = gen_conseq_nm t_bdHoareF_notmod t_bdHoareF_conseq
 let t_bdHoareS_conseq_nm = gen_conseq_nm t_bdHoareS_notmod t_bdHoareS_conseq
 
 (* -------------------------------------------------------------------- *)
-(* Concavity / Jensen's inequality for ehoare.
+(* Jensen-based consequence transform for ehoare.
  *
  * Given a concave increasing function fc : xreal → xreal:
  *
@@ -684,10 +684,43 @@ let t_bdHoareS_conseq_nm = gen_conseq_nm t_bdHoareS_notmod t_bdHoareS_conseq
  *   ——————————————————————————————————————
  *   ehoare[f] P ==> Q
  *
- * The idea: E(fc(g2)) ≤ fc(E(g2)) by Jensen, and fc is increasing
- * so fc(E(g2)) ≤ fc(g1), giving {fc(g1)} c {fc(g2)}.               *)
+ * Jensen is directional, so each bound needs its own shape of [fc]:
+ *
+ *   [>=]  concave_incr fc,  fc(pre') <= pre,  post <= fc(post')
+ *         E[post] <= E[fc post'] <= fc(E[post']) <= fc(pre') <= pre
+ *
+ *   [<=]  convex_incr fc,  pre <= fc(pre'),  fc(post') <= post
+ *         pre <= fc(pre') <= fc(E[post']) <= E[fc post'] <= E[post]
+ *         Convexity and monotonicity are NOT enough here: eHoare ranges
+ *         over sub-distributions, so [convex_incr] also demands [fc 0 = 0]
+ *         and a condition at [oo] -- see its header in Xreal.ec, which
+ *         also carries the Jensen TODO.
+ *
+ * In both chains the middle step is Jensen and the one next to it uses that
+ * [fc] is increasing; the outer two are g1 and g2.  Equality ([=]) has no
+ * such chain -- Jensen holds in one direction only -- and is rejected.   *)
 
-let t_ehoareF_concave
+(* Direction-specific pieces: the shape predicate on [fc], and the two value
+   obligations, each taking [fc] applied to the inner side first and then the
+   value of the judgment being proved. *)
+let transform_parts (tc : tcenv1) (cmp : hoarecmp) =
+  match cmp with
+  | FHge ->
+      (f_concave_incr,
+       (fun fc_pre  pre  -> f_xreal_le fc_pre pre),
+       (fun fc_post post -> f_xreal_le post fc_post))
+  | FHle ->
+      (f_convex_incr,
+       (fun fc_pre  pre  -> f_xreal_le pre fc_pre),
+       (fun fc_post post -> f_xreal_le fc_post post))
+  | FHeq ->
+      tc_error !!tc
+        "the consequence transform does not support equality ([=]) \
+         judgments: Jensen's inequality holds in one direction only.  Use an \
+         upper bound ([>=]) with a concave function, or a lower bound ([<=]) \
+         with a convex one"
+
+let t_ehoareF_transform
     (fc   : ss_inv)
     (pre  : ss_inv)
     (post : ss_inv)
@@ -695,14 +728,7 @@ let t_ehoareF_concave
 =
   let env = FApi.tc1_env tc in
   let hf = tc1_as_ehoareF tc in
-  (* Jensen gives  E[fc(g2)] <= fc(E[g2])  only because fc is CONCAVE, which is
-     the upper-bound ([>=]) direction.  On a lower-bound ([<=]) or equality
-     ([=]) goal this inequality points the wrong way and the rule is unsound;
-     a lower-bound version would need a CONVEX fc (a separate rule). *)
-  if hf.ehf_cmp <> FHge then
-    tc_error !!tc
-      "the concave consequence rule supports only upper-bound ([>=]) \
-       judgments";
+  let f_shape, mk_g1, mk_g2 = transform_parts tc hf.ehf_cmp in
   let pre = ss_inv_rebind pre hf.ehf_m in
   let post = ss_inv_rebind post hf.ehf_m in
   let fc = ss_inv_rebind fc hf.ehf_m in
@@ -721,19 +747,19 @@ let t_ehoareF_concave
        (PV.pp env) inter;
 
   let g0 =
-    f_forall_mems_ss_inv (EcMemory.empty_local ~witharg:false m) (map_ss_inv1 f_concave_incr fc) in
+    f_forall_mems_ss_inv (EcMemory.empty_local ~witharg:false m) (map_ss_inv1 f_shape fc) in
 
-  (* the concave function applies to the VALUE component *)
+  (* the transform applies to the VALUE component *)
   let pre_v  = snd (ehoare_pair_split pre) in
   let post_v = snd (ehoare_pair_split post) in
   let g1 =
     let cond = map_ss_inv2 (fun pre fc -> f_app_simpl fc [pre] txreal) pre_v fc in
-    let cond = map_ss_inv2 f_xreal_le cond (ehf_pr_val hf) in
+    let cond = map_ss_inv2 mk_g1 cond (ehf_pr_val hf) in
     f_forall_mems_ss_inv mpr cond in
 
   let g2 =
     let cond = map_ss_inv2 (fun post fc -> f_app_simpl fc [post] txreal) post_v fc in
-    let cond = map_ss_inv2 f_xreal_le (ehf_po_val hf) cond in
+    let cond = map_ss_inv2 mk_g2 cond (ehf_po_val hf) in
     f_forall_mems_ss_inv mpo cond in
 
   let g3 =
@@ -746,8 +772,8 @@ let t_ehoareF_concave
 
 (* -------------------------------------------------------------------- *)
 
-(* ehoareS concavity rule: same as ehoareF_concave but for statements. *)
-let t_ehoareS_concave
+(* ehoareS transform rule: same as ehoareF_transform but for statements. *)
+let t_ehoareS_transform
     (fc   : ss_inv)
     (pre  : ss_inv)
     (post : ss_inv)
@@ -755,11 +781,7 @@ let t_ehoareS_concave
 =
   let env = FApi.tc1_env tc in
   let hs = tc1_as_ehoareS tc in
-  (* upper-bound only -- see [t_ehoareF_concave] for the Jensen argument. *)
-  if hs.ehs_cmp <> FHge then
-    tc_error !!tc
-      "the concave consequence rule supports only upper-bound ([>=]) \
-       judgments";
+  let f_shape, mk_g1, mk_g2 = transform_parts tc hs.ehs_cmp in
   let s = hs.ehs_s in
   let m = fst hs.ehs_m in
   let pre = ss_inv_rebind pre m in
@@ -774,19 +796,19 @@ let t_ehoareS_concave
        (PV.pp env) inter;
 
   let g0 =
-    f_forall_mems_ss_inv hs.ehs_m (map_ss_inv1 f_concave_incr fc) in
+    f_forall_mems_ss_inv hs.ehs_m (map_ss_inv1 f_shape fc) in
 
-  (* the concave function applies to the VALUE component *)
+  (* the transform applies to the VALUE component *)
   let pre_v  = snd (ehoare_pair_split pre) in
   let post_v = snd (ehoare_pair_split post) in
   let g1 =
     let cond = map_ss_inv2 (fun pre fc -> f_app_simpl fc [pre] txreal) pre_v fc in
-    let cond = map_ss_inv2 f_xreal_le cond (ehs_pr_val hs) in
+    let cond = map_ss_inv2 mk_g1 cond (ehs_pr_val hs) in
     f_forall_mems_ss_inv hs.ehs_m cond in
 
   let g2 =
     let cond = map_ss_inv2 (fun post fc -> f_app_simpl fc [post] txreal) post_v fc in
-    let cond = map_ss_inv2 f_xreal_le (ehs_po_val hs) cond in
+    let cond = map_ss_inv2 mk_g2 cond (ehs_po_val hs) in
     f_forall_mems_ss_inv hs.ehs_m cond in
 
   let g3 =
@@ -799,10 +821,13 @@ let t_ehoareS_concave
   FApi.xmutate1 tc `HlConseq [g0; g1; g2; g3]
 
 (* -------------------------------------------------------------------- *)
-let t_concave_incr =
+let t_shape_incr base =
   FApi.t_try
     (FApi.t_seq (t_intro_s `Fresh)
-       (t_solve ~bases:["concave_incr"] ~mode:EcMatching.fmrigid ~canfail:true ~depth:20))
+       (t_solve ~bases:[base] ~mode:EcMatching.fmrigid ~canfail:true ~depth:20))
+
+let t_concave_incr = t_shape_incr "concave_incr"
+let t_convex_incr  = t_shape_incr "convex_incr"
 
 (* -------------------------------------------------------------------- *)
 let t_ehoare_conseq_nm_end =
@@ -815,10 +840,14 @@ let t_ehoare_conseq_nm_end =
 (* NB: the "_nm" rules build a CONCAVE [fc] for Jensen [E[fc v] <= fc(E v)],
    so they are upper-bound only.  Here the [`|`]/[oo] use is CORRECT (not the
    guard-fold antipattern); a [<=]/[=] version is a NEW convex-based rule, not
-   a fix.  See EHOARE-GUARDED-NOTES.md. *)
+   a fix. *)
 let t_ehoareF_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
   let (env, hyps, _) = FApi.tc1_eflat tc in
   let hf = tc1_as_ehoareF tc in
+  if hf.ehf_cmp <> FHge then
+    tc_error !!tc
+      "this consequence rule builds a concave function, so it supports only \
+       upper-bound ([>=]) judgments";
   let f = hf.ehf_f in
   let _mpr,mpo = Fun.hoareF_memenv hf.ehf_m f env in
   let fsig = (Fun.by_xpath f env).f_sig in
@@ -841,12 +870,16 @@ let t_ehoareF_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
       f_interp_ehoare_form cond (f_local x txreal) in
     map_ss_inv1 (fun cd -> f_lambda [x,GTty txreal] (f_interp_ehoare_form' cd)) cond in
 
-  (t_ehoareF_concave fc pre post @+ t_ehoare_conseq_nm_end) tc
+  (t_ehoareF_transform fc pre post @+ t_ehoare_conseq_nm_end) tc
 
 (* -------------------------------------------------------------------- *)
 let t_ehoareS_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
   let env = FApi.tc1_env tc in
   let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp <> FHge then
+    tc_error !!tc
+      "this consequence rule builds a concave function, so it supports only \
+       upper-bound ([>=]) judgments";
   let s = hs.ehs_s in
   let modi = s_write env s in
   let _cond1, cond2 = conseq_econd hs.ehs_cmp (ehs_pr hs) (ehs_po hs) pre post in
@@ -857,7 +890,7 @@ let t_ehoareS_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
       f_interp_ehoare_form cond (f_local x txreal) in
     map_ss_inv1 (fun cond -> f_lambda [x,GTty txreal] (f_interp_ehoare_form' cond)) cond in
 
-  (t_ehoareS_concave fc pre post @+ t_ehoare_conseq_nm_end) tc
+  (t_ehoareS_transform fc pre post @+ t_ehoare_conseq_nm_end) tc
 
 
 (* -------------------------------------------------------------------- *)
@@ -926,14 +959,21 @@ let process_concave
   let t_apply_r tc =
     EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true (fst f1) tc in
 
+  (* solve the shape side-condition in the base matching the direction *)
+  let t_shape cmp =
+    match cmp with
+    | FHge -> t_concave_incr
+    | FHle -> t_convex_incr
+    | FHeq -> t_id in
+
   match (snd f1).f_node with
   | FeHoareS hs ->
-    FApi.t_first t_concave_incr
-        (FApi.t_on1seq 3 (t_ehoareS_concave fc (ehs_pr hs) (ehs_po hs)) t_apply_r tc)
+    FApi.t_first (t_shape hs.ehs_cmp)
+        (FApi.t_on1seq 3 (t_ehoareS_transform fc (ehs_pr hs) (ehs_po hs)) t_apply_r tc)
 
   | FeHoareF hf ->
-     FApi.t_first t_concave_incr
-       (FApi.t_on1seq 3 (t_ehoareF_concave fc (ehf_pr hf) (ehf_po hf)) t_apply_r tc)
+     FApi.t_first (t_shape hf.ehf_cmp)
+       (FApi.t_on1seq 3 (t_ehoareF_transform fc (ehf_pr hf) (ehf_po hf)) t_apply_r tc)
 
   | _ -> tc_error !!tc "conseq concave: not a ehoare judgement"
 
@@ -1307,9 +1347,27 @@ let t_bdHoareF_conseq_equiv
   FApi.xmutate1 tc `BdHoareFConseqEquiv [cond1; cond2; ef; hf2]
 
 
-(* ehoareF via equivalence: similar to hoareF but with xreal ordering.
- *   cond1: ∀m1, ∃m2, P1 m1 = -∞ ∨ (P m1 m2 ∧ P2 m2 ≤ P1 m1)
- *   cond2: ∀m1 m2, Q m1 m2 ⇒ Q1 m1 ≤ Q2 m2                        *)
+(* ehoareF via equivalence.  All four assertions are guarded tuples and are
+ * split into guard and value; a guard is never folded into a value.
+ *
+ *   ∀m1. P1 m1 ⇒ ∃m2. Rpre m1 m2 ∧ P2 m2 ∧ f1 m1 ⋈ f2 m2
+ *   ∀m1 m2. Rpost m1 m2 ⇒ Q2 m2 ⇒ Q1 m1 ∧ g2 m2 ⋈ g1 m1
+ *   equiv[M1 ~ M2] Rpre ==> Rpost    ehoare[M2] {P2 | f2} ==> {Q2 | g2} ⋈
+ *   ———————————————————————————————————————————————————————————————
+ *                  ehoare[M1] {P1 | f1} ==> {Q1 | g1} ⋈
+ *
+ * with [a ⋈ b] = [f_xreal_cmp cmp a b], i.e.
+ *   [>=]  f2 <= f1,  g1 <= g2     [<=]  f1 <= f2,  g2 <= g1     [=]  equalities.
+ *
+ * Semantic basis: an [equiv] judgment provides a coupling of the two output
+ * sub-distributions with EXACT marginals on both sides and support in
+ * [Rpost] -- the fact [t_equiv_deno] relies on to derive [=] as well as [<=]
+ * between probabilities.  Expectations then transfer along that coupling in
+ * each direction from the pointwise comparison on its support, and [Q2]
+ * holding almost surely on the right marginal yields [Q1] almost surely on
+ * the left.  The witness [m2] must fix every variable read by [Rpre], [P2]
+ * and [f2].  There is no [f1 = oo] shortcut: an infinite value does not
+ * discharge the qualitative obligation on [Q1]. *)
 let t_ehoareF_conseq_equiv
     (f2 : EcPath.xpath)
     (p  : ts_inv)
@@ -1320,29 +1378,38 @@ let t_ehoareF_conseq_equiv
 =
   let env = FApi.tc1_env tc in
   let hf1 = tc1_as_ehoareF tc in
+  let cmp = hf1.ehf_cmp in
   let ef  = f_equivF p hf1.ehf_f f2 q in
-  let hf2 = f_eHoareF ~cmp:hf1.ehf_cmp p2 f2 q2 in
+  let p1g, p1v = ehoare_pair_split (ehf_pr hf1) in
+  let q1g, q1v = ehoare_pair_split (ehf_po hf1) in
+  let p2g, p2v = ehoare_pair_split p2 in
+  let q2g, q2v = ehoare_pair_split q2 in
+  let hf2 = f_eHoareF ~prb:p2g.inv ~pob:q2g.inv ~cmp p2v f2 q2v in
   let (prml, _prmr), (poml, pomr) = Fun.equivF_memenv p.ml p.mr hf1.ehf_f f2 env in
-  let p1 = (ehf_pr_val hf1) and q1 = (ehf_po_val hf1) in
   let cond1 =
-    let fv1 = PV.fv env p.mr p.inv in
-    let fv2 = PV.fv env p2.m p2.inv in
-    let fv = PV.union fv1 fv2 in
+    let fv =
+      List.fold_left PV.union (PV.fv env p.mr p.inv)
+        [PV.fv env p2g.m p2g.inv; PV.fv env p2v.m p2v.inv] in
     let elts, glob = PV.ntr_elements fv in
     let bd, s = generalize_subst env p2.m elts glob in
     let s1 = PVM.of_mpv s p.mr in
     let s2 = PVM.of_mpv s p2.m in
-    let p1 = ss_inv_rebind p1 p.ml in
-    let concl =
-     f_or (f_eq p1.inv f_xreal_inf)
-       (f_and (PVM.subst env s1 p.inv) (f_xreal_le (PVM.subst env s2 p2.inv) p1.inv)) in
-    f_forall_mems [prml] (f_exists bd concl) in
+    let p1g = ss_inv_rebind p1g p.ml in
+    let p1v = ss_inv_rebind p1v p.ml in
+    let witness =
+      f_ands [ PVM.subst env s1 p.inv;
+               PVM.subst env s2 p2g.inv;
+               f_xreal_cmp cmp p1v.inv (PVM.subst env s2 p2v.inv) ] in
+    f_forall_mems [prml] (f_imp p1g.inv (f_exists bd witness)) in
   let cond2 =
-    let q1 = ss_inv_rebind q1 q.ml in
-    let q1 = ss_inv_generalize_right q1 q.mr in
-    let q2 = ss_inv_rebind q2 q.mr in
-    let q2 = ss_inv_generalize_left q2 q.ml in
-    f_forall_mems_ts_inv poml pomr (map_ts_inv3 (fun q q1 q2 -> f_imp q (f_xreal_le q1 q2)) q q1 q2) in
+    let q1g = ss_inv_generalize_as_left  q1g q.ml q.mr in
+    let q1v = ss_inv_generalize_as_left  q1v q.ml q.mr in
+    let q2g = ss_inv_generalize_as_right q2g q.ml q.mr in
+    let q2v = ss_inv_generalize_as_right q2v q.ml q.mr in
+    let body =
+      f_imps [q.inv; q2g.inv]
+        (f_and q1g.inv (f_xreal_cmp cmp q2v.inv q1v.inv)) in
+    f_forall_mems_ts_inv poml pomr { q with inv = body } in
   FApi.xmutate1 tc `HoareFConseqEquiv [cond1; cond2; ef; hf2]
 
 

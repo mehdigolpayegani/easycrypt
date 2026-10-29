@@ -31,9 +31,10 @@ val t_hoareS_conseq_nm    : ss_inv -> hs_inv -> FApi.backward
 val t_bdHoareF_conseq_nm  : ss_inv -> ss_inv -> FApi.backward
 val t_bdHoareS_conseq_nm  : ss_inv -> ss_inv -> FApi.backward
 (* -------------------------------------------------------------------- *)
-val t_ehoareS_concave : ss_inv -> ss_inv -> ss_inv -> FApi.backward
-val t_ehoareF_concave : ss_inv -> ss_inv -> ss_inv -> FApi.backward
+val t_ehoareS_transform : ss_inv -> ss_inv -> ss_inv -> FApi.backward
+val t_ehoareF_transform : ss_inv -> ss_inv -> ss_inv -> FApi.backward
 val t_concave_incr : FApi.backward
+val t_convex_incr : FApi.backward
 
 (* -------------------------------------------------------------------- *)
 val t_equivS_conseq_bd : side -> ss_inv -> ss_inv ->FApi.backward

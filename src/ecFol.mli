@@ -74,6 +74,7 @@ val fop_interp_ehoare_form : form
 val f_interp_ehoare_form : form -> form -> form
 val f_Ep : EcTypes.ty -> form -> form -> form
 val f_concave_incr : form -> form
+val f_convex_incr  : form -> form
 
 val f_rp2xr : form -> form
 val f_r2rp  : form -> form

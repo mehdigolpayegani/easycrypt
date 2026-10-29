@@ -276,22 +276,49 @@ let t_ehoare_call fpre fpost tc =
   let tcenv = FApi.t_swap_goals 0 1 tcenv in
   FApi.t_sub [t_ehoare_call_core fpre fpost; t_id] tcenv
 
-let t_ehoare_call_concave f fpre fpost tc =
-  let _, _, _, _, _, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
-  let wppre_v = snd (ehoare_pair_split wppre) in
+let t_ehoare_call_concave fc fpre fpost tc =
+  (* [call / fc] uses Jensen for a CONCAVE fc: upper bound only *)
+  if (tc1_as_ehoareS tc).ehs_cmp <> FHge then
+    tc_error !!tc
+      "call with a function argument builds a concave function, so it \
+       supports only upper-bound ([>=]) judgments";
+  let hyps, env, hs, _, fn, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
+  let m = EcMemory.memory hs.ehs_m in
+  let call, _ = tc1_last_call tc hs.ehs_s in
+  let fc = ss_inv_rebind fc m in
+  (* [fc] is read after the call, so it must not depend on what the call writes *)
+  let modi  = s_write env (stmt [i_call call]) in
+  let inter = PV.interdep env (PV.fv env m fc.inv) modi in
+  if not (PV.is_empty inter) then
+    tc_error !!tc "the function should not depend on modified elements: %a"
+      (PV.pp env) inter;
+  let fpre_g  = fst (ehoare_pair_split (ss_inv_rebind fpre m)) in
+  let fpost_g = fst (ehoare_pair_split (ss_inv_rebind fpost m)) in
+  let wpre_v  = snd (ehoare_pair_split wppre) in
+  let wpost_v = snd (ehoare_pair_split wppost) in
+  let po_g, po_v = ehoare_pair_split (ehs_po hs) in
+  let app x = f_app_simpl fc.inv [x] txreal in
+  (* guard: pushed back through the call as for Hoare, so unmodified
+     variables carry the frame *)
+  let guard =
+    compute_hoare_call_post hyps m
+      (fpre_g.inv, POE.empty fpost_g.inv) call (POE.empty po_g.inv) in
+  let mid = { m; inv = f_tuple [guard; app wpre_v.inv] } in
+  let mem_prop body = EcSubst.f_forall_mems_ss_inv hs.ehs_m { m; inv = body } in
+  (* value: Jensen with the concave increasing [fc] *)
+  let g0 = mem_prop (f_concave_incr fc.inv) in
+  let g2 = mem_prop (f_xreal_le po_v.inv (app wpost_v.inv)) in
+  let f_concl =
+    f_eHoareF_r { ehf_m   = fpre.m;
+                  ehf_pr  = ehoare_as_tuple fpre;
+                  ehf_f   = fn;
+                  ehf_po  = ehoare_as_tuple fpost;
+                  ehf_cmp = FHge } [@alert "-priv_pl"] in
   let tcenv =
-    EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last))
-     (map_ss_inv2 (fun wppre f -> f_app_simpl f [wppre] txreal) wppre_v f) tc in
+    EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last)) mid tc in
   let tcenv = FApi.t_swap_goals 0 1 tcenv in
-  let t_call =
-    FApi.t_seqsub (EcPhlConseq.t_ehoareS_concave f wppre wppost)
-      [ t_id;
-        t_id;
-        t_id;
-        t_ehoare_call_core fpre fpost]
-  in
-
-  FApi.t_sub [t_call; t_id] tcenv
+  FApi.t_sub
+    [(fun tc -> FApi.xmutate1 tc `HlCall [g0; g2; f_concl]); t_id] tcenv
 
 (* -------------------------------------------------------------------- *)
 let bdhoare_call_spec pf fpre fpost f cmp bd opt_bd =
@@ -794,7 +821,6 @@ let process_call_concave (fc, info) tc =
   FApi.t_seqsub
     (t_call ax)
     [ EcPhlConseq.t_concave_incr;
-      t_trivial; (* pre *)
       t_trivial; (* post *)
       FApi.t_seqs
         [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
