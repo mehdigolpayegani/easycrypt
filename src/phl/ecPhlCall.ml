@@ -299,15 +299,17 @@ let t_ehoare_call_concave fc fpre fpost tc =
   let po_g, po_v = ehoare_pair_split (ehs_po hs) in
   let app x = f_app_simpl fc.inv [x] txreal in
   (* guard: pushed back through the call as for Hoare, so unmodified
-     variables carry the frame *)
+     variables carry the frame. The value obligation [po_v <= fc wpost_v]
+     is pushed back together with it, so that it only needs to hold on
+     states reached by the call, where the frame is available. *)
   let guard =
+    let po = f_and po_g.inv (f_xreal_le po_v.inv (app wpost_v.inv)) in
     compute_hoare_call_post hyps m
-      (fpre_g.inv, POE.empty fpost_g.inv) call (POE.empty po_g.inv) in
+      (fpre_g.inv, POE.empty fpost_g.inv) call (POE.empty po) in
   let mid = { m; inv = f_tuple [guard; app wpre_v.inv] } in
   let mem_prop body = EcSubst.f_forall_mems_ss_inv hs.ehs_m { m; inv = body } in
   (* value: Jensen with the concave increasing [fc] *)
   let g0 = mem_prop (f_concave_incr fc.inv) in
-  let g2 = mem_prop (f_xreal_le po_v.inv (app wpost_v.inv)) in
   let f_concl =
     f_eHoareF_r { ehf_m   = fpre.m;
                   ehf_pr  = ehoare_as_tuple fpre;
@@ -318,7 +320,7 @@ let t_ehoare_call_concave fc fpre fpost tc =
     EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last)) mid tc in
   let tcenv = FApi.t_swap_goals 0 1 tcenv in
   FApi.t_sub
-    [(fun tc -> FApi.xmutate1 tc `HlCall [g0; g2; f_concl]); t_id] tcenv
+    [(fun tc -> FApi.xmutate1 tc `HlCall [g0; f_concl]); t_id] tcenv
 
 (* -------------------------------------------------------------------- *)
 let bdhoare_call_spec pf fpre fpost f cmp bd opt_bd =
@@ -821,7 +823,6 @@ let process_call_concave (fc, info) tc =
   FApi.t_seqsub
     (t_call ax)
     [ EcPhlConseq.t_concave_incr;
-      t_trivial; (* post *)
       FApi.t_seqs
         [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
          !subtactic; t_trivial];
