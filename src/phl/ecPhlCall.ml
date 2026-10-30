@@ -570,9 +570,11 @@ let process_call side info tc =
           let (_,f,_) = fst (tc1_last_call tc hs.ehs_s) in
           let m = (EcIdent.create "&hr") in
           let penv, qenv = LDecl.hoareF m f hyps in
-          let pre  = TTC.pf_process_form !!tc penv txreal pre  in
-          let post = TTC.pf_process_form !!tc qenv txreal post in
-          f_eHoareF ~cmp:hs.ehs_cmp {m;inv=pre} f {m;inv=post}
+          let pre  = EcPhlConseq.process_cut_side !!tc penv txreal pre  in
+          let post = EcPhlConseq.process_cut_side !!tc qenv txreal post in
+          let prg, prv = EcPhlConseq.ehoare_side_split f_true pre  in
+          let pog, pov = EcPhlConseq.ehoare_side_split f_true post in
+          f_eHoareF ~prb:prg ~pob:pog ~cmp:hs.ehs_cmp {m;inv=prv} f {m;inv=pov}
 
       | FbdHoareS _, Some _
       | FhoareS  _, Some _ ->
@@ -760,7 +762,11 @@ let process_call_concave (fc, info) tc =
       match concl.f_node  with
       | FeHoareS hs ->
           let (_,f,_) = fst (tc1_last_call tc hs.ehs_s) in
-          (txreal, fun pre post -> f_eHoareF ~cmp:hs.ehs_cmp pre f post)
+          (txreal, fun (pre : ss_inv) (post : ss_inv) ->
+             let prg, prv = EcPhlConseq.ehoare_side_split f_true pre.inv  in
+             let pog, pov = EcPhlConseq.ehoare_side_split f_true post.inv in
+             f_eHoareF ~prb:prg ~pob:pog ~cmp:hs.ehs_cmp
+               { pre with inv = prv } f { post with inv = pov })
 
       | _ -> tc_error !!tc "the conclusion is not a ehoare" in
 
@@ -779,9 +785,15 @@ let process_call_concave (fc, info) tc =
     match info with
     | CI_spec (pre, epost) ->
       let ty,fmake = process_spec tc in
-      let _, pre = TTC.tc1_process_Xhl_form tc ty pre in
-      let _, post = TTC.tc1_process_Xhl_form tc ty epost.pnormal in
-      fmake pre post
+      (* a guarded side [{g | v}] is parsed as the tuple [(g, v)] *)
+      let process_side pf =
+        match EcLocation.unloc pf with
+        | PFtuple [pg; pv] ->
+            let _, g = TTC.tc1_process_Xhl_form tc tbool pg in
+            let _, v = TTC.tc1_process_Xhl_form tc ty pv in
+            { v with inv = f_tuple [g.inv; v.inv] }
+        | _ -> snd (TTC.tc1_process_Xhl_form tc ty pf) in
+      fmake (process_side pre) (process_side epost.pnormal)
 
     | CI_inv inv ->
       let ty, fmake = process_inv tc in

@@ -1414,6 +1414,22 @@ let t_ehoareF_conseq_equiv
 
 
 (* -------------------------------------------------------------------- *)
+(* Guarded eHoare sides in consequence cuts. A side [{g | v}] is parsed as
+ * the tuple [(g, v)]; a bare value [v] keeps the default guard [dfl]. *)
+let ehoare_side_split (dfl : form) (f : form) : form * form =
+  match f.f_node with
+  | Ftuple [g; v] when EcTypes.ty_equal g.f_ty tbool -> (g, v)
+  | _ -> (dfl, f)
+
+let process_cut_side pe env ty (pf : pformula) =
+  match EcLocation.unloc pf with
+  | PFtuple [pg; pv] when EcTypes.ty_equal ty txreal ->
+      let g = TTC.pf_process_form pe env tbool pg in
+      let v = TTC.pf_process_form pe env txreal pv in
+      f_tuple [g; v]
+  | _ -> TTC.pf_process_form pe env ty pf
+
+(* -------------------------------------------------------------------- *)
 (* High-level consequence dispatcher: shared helpers                     *)
 (* -------------------------------------------------------------------- *)
 
@@ -2163,8 +2179,8 @@ let process_conseq_ss
         let fmake (pre : ss_inv) (post : ss_inv) bd =
           ensure_none bd;
           f_eHoareS_r
-            { hs with ehs_pr = f_tuple [(ehs_prb hs).inv; pre.inv];
-                      ehs_po = f_tuple [(ehs_pob hs).inv; post.inv] }
+            { hs with ehs_pr = f_tuple ((fun (g, v) -> [g; v]) (ehoare_side_split (ehs_prb hs).inv pre.inv));
+                      ehs_po = f_tuple ((fun (g, v) -> [g; v]) (ehoare_side_split (ehs_pob hs).inv post.inv)) }
             [@alert "-priv_pl"] in
         (env, env, Inv_ss (ehs_pr_val hs), Inv_ss (ehs_po_val hs), txreal, lift_ss_inv2 fmake)
 
@@ -2173,8 +2189,8 @@ let process_conseq_ss
         let fmake (pre : ss_inv) (post : ss_inv) bd =
           ensure_none bd;
           f_eHoareF_r
-            { hf with ehf_pr = f_tuple [(ehf_prb hf).inv; pre.inv];
-                      ehf_po = f_tuple [(ehf_pob hf).inv; post.inv] }
+            { hf with ehf_pr = f_tuple ((fun (g, v) -> [g; v]) (ehoare_side_split (ehf_prb hf).inv pre.inv));
+                      ehf_po = f_tuple ((fun (g, v) -> [g; v]) (ehoare_side_split (ehf_pob hf).inv post.inv)) }
             [@alert "-priv_pl"] in
         (penv, qenv, Inv_ss (ehf_pr_val hf), Inv_ss (ehf_po_val hf), txreal, lift_ss_inv2 fmake)
 
@@ -2223,8 +2239,8 @@ let process_conseq_ss
     in
 
     ensure_none_poe poe;
-    let pre  = pre  |> omap (TTC.pf_process_form !!tc penv ty) |> odfl (inv_of_inv gpre)  in
-    let post = post |> omap (TTC.pf_process_form !!tc qenv ty) |> odfl (inv_of_inv gpost) in
+    let pre  = pre  |> omap (process_cut_side !!tc penv ty) |> odfl (inv_of_inv gpre)  in
+    let post = post |> omap (process_cut_side !!tc qenv ty) |> odfl (inv_of_inv gpost) in
 
     let (pre, post, bd) = match gpre, gpost with
     | Inv_ss gpre, Inv_ss gpost ->
@@ -2261,7 +2277,10 @@ let process_conseq_ss
         let penv, qenv = LDecl.hoareF m f hyps in
         let fmake (pre : ss_inv) (post : ss_inv) c_or_bd =
           ensure_none c_or_bd;
-          f_eHoareF ~prb:prg ~pob:pog ~cmp:hf.ehf_cmp pre f post in
+          let prg, prv = ehoare_side_split prg pre.inv in
+          let pog, pov = ehoare_side_split pog post.inv in
+          f_eHoareF ~prb:prg ~pob:pog ~cmp:hf.ehf_cmp
+            { pre with inv = prv } f { post with inv = pov } in
         (penv, qenv, Inv_ss pr, Inv_ss po, txreal, lift_ss_inv2 fmake)
 
       | FbdHoareS bhs ->
@@ -2326,8 +2345,8 @@ let process_conseq_ss
     in
 
     ensure_none_poe poe;
-    let pre  = pre  |> omap (TTC.pf_process_form !!tc penv ty) |> odfl (inv_of_inv gpre)  in
-    let post = post |> omap (TTC.pf_process_form !!tc qenv ty) |> odfl (inv_of_inv gpost) in
+    let pre  = pre  |> omap (process_cut_side !!tc penv ty) |> odfl (inv_of_inv gpre)  in
+    let post = post |> omap (process_cut_side !!tc qenv ty) |> odfl (inv_of_inv gpost) in
 
     let (pre, post, c_or_bd) = match gpre, gpost with
     | Inv_ss gpre, Inv_ss gpost ->

@@ -2531,15 +2531,23 @@ cbv:
 | CBV l=qoident+ { `Delta l  :: simplify_red  }
 | CBV DELTA      { `Delta [] :: simplify_red }
 
+(* A side of a consequence cut: a formula, or a guarded eHoare side
+   [{g | v}], encoded as the tuple [(g, v)]. *)
+conseq_form:
+| LBRACE pb=form PIPE pf=form RBRACE
+    { mk_loc (EcLocation.make $startpos $endpos) (PFtuple [pb; pf]) }
+| f=form
+    { f }
+
 conseq:
-| empty                            { None, None }
-| UNDERSCORE LONGARROW UNDERSCORE  { None, None }
-| f1=form LONGARROW               { Some f1, None }
-| f1=form LONGARROW UNDERSCORE    { Some f1, None }
-| f2=form                         { None, Some f2 }
-| LONGARROW f2=form               { None, Some f2 }
-| UNDERSCORE LONGARROW f2=form    { None, Some f2 }
-| f1=form LONGARROW f2=form       { Some f1, Some f2 }
+| empty                                       { None, None }
+| UNDERSCORE LONGARROW UNDERSCORE             { None, None }
+| f1=conseq_form LONGARROW                    { Some f1, None }
+| f1=conseq_form LONGARROW UNDERSCORE         { Some f1, None }
+| f2=conseq_form                              { None, Some f2 }
+| LONGARROW f2=conseq_form                    { None, Some f2 }
+| UNDERSCORE LONGARROW f2=conseq_form         { None, Some f2 }
+| f1=conseq_form LONGARROW f2=conseq_form     { Some f1, Some f2 }
 
 conseq_xt:
 | c=conseq d=hoare_epost_option(none)
@@ -2550,7 +2558,7 @@ conseq_xt:
     { (None, None, None), Some (CQI_bd (cmp, bd)) }
 
 call_info:
-| f1=form LONGARROW f2=form poe=hoare_epost(none)
+| f1=conseq_form LONGARROW f2=conseq_form poe=hoare_epost(none)
     { CI_spec (f1, { pnormal = f2; pexcept = poe}) }
 | f=form
     { CI_inv  (f) }

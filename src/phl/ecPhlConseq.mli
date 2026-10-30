@@ -54,3 +54,8 @@ val process_conseq_opt :
 val t_conseqauto : ?delta:bool -> ?tsolve:FApi.backward -> FApi.backward
 
 val process_concave : pformula option tuple2 gppterm * pformula -> FApi.backward
+
+(* -------------------------------------------------------------------- *)
+(* Guarded eHoare sides [{g | v}] in cuts, parsed as the tuple [(g, v)]. *)
+val ehoare_side_split : form -> form -> form * form
+val process_cut_side  : proofenv -> EcEnv.LDecl.hyps -> ty -> EcParsetree.pformula -> form
