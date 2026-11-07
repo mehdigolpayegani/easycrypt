@@ -180,7 +180,19 @@ module FunAbsLow = struct
          {P | f} >= o {P | f}.
      - [<=] with f = 1 (rule Adv-Lossless): the losslessness hypothesis on
        the procedure, as for phoare, and {P | 1} <= o {P | 1} for every
-       oracle.
+       oracle.  The hypothesis, forall B, islossless B.o => islossless A(B).f,
+       asks more of the oracles than the premises prove, which is
+       termination from P only.  The rule is justified as the phoare one:
+       for the oracle B' that behaves as o on the memories satisfying P
+       and does nothing elsewhere, B'.o is lossless, so A(B').f is, and
+       from a memory satisfying P the runs of A(o) and A(B') coincide,
+       since P reads no variable written by A and every oracle call
+       returns to P.  This takes the quantification over B semantically,
+       as B' need not be a module when P is not a program expression.
+       The faithful alternative, not implemented, is the hypothesis of
+       the paper, relative to P:
+         forall B, {P | 1} <= B.o {P | 1} => {P | 1} <= A(B).f {P | 1},
+       which the premises instantiate directly with B := o.
      - [<=] and [=] with a budget (q, K) (rule Adv-Budget): for every oracle
          forall j v, {P /\ q = j /\ f = v%xr | f} <> o
                      {P /\ j <= q /\ (j < q \/ f = v%xr) | f},
