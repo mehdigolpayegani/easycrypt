@@ -256,3 +256,136 @@ proof.
   wp; skip => &hr /= hu; rewrite /SQ BRA.big_seq1 /= hu /=.
   by move=> r /= ->; smt(size_ge0).
 qed.
+
+(* -------------------------------------------------------------------- *)
+(* Functional correctness: quicksort sorts and permutes its input.      *)
+
+(* The positions i <= j lie in a common pending range. *)
+op covered (st : (int * int) list) (i j : int) =
+  exists r, r \in st /\ r.`1 <= i /\ j <= r.`2.
+
+(* Every pair of positions not in a common pending range is in order. *)
+op sorted_except (st : (int * int) list) (t : elem array) =
+  forall i j, 0 <= i < j < size t => covered st i j \/ t.[i] <= t.[j].
+
+(* Two ranges do not overlap (an empty range overlaps nothing). *)
+op apart (r1 r2 : int * int) =
+  r1.`2 < r2.`1 \/ r2.`2 < r1.`1 \/ r1.`2 < r1.`1 \/ r2.`2 < r2.`1.
+
+(* The pending ranges are pairwise disjoint. *)
+op disj (st : (int * int) list) : bool =
+  with st = [] => true
+  with st = r :: rest => (forall r', r' \in rest => apart r r') /\ disj rest.
+
+(* A permuted range holds the values of the original range. *)
+lemma perm_eq_on_get (t t' : elem array) lo hi j :
+  lo <= j <= hi => perm_eq_on t t' lo hi => exists j', lo <= j' <= hi /\ t'.[j] = t.[j'].
+proof.
+  move=> hj hp; apply (mem_sub t lo hi t'.[j]).
+  by rewrite (perm_eq_mem _ _ hp) mem_array_sub.
+qed.
+
+(* A range of size at most 1 covers no pair of distinct positions. *)
+lemma sorted_except_pop (t : elem array) lo hi rest :
+  hi <= lo => sorted_except ((lo, hi) :: rest) t => sorted_except rest t.
+proof.
+  move=> hle hs i j hij.
+  by case: (hs i j hij) => [[r] h | ->]; [left; exists r | right]; smt().
+qed.
+
+(* Partitioning the pending range [lo..hi] around p splits it into
+   [lo..p-1] and [p+1..hi]: the pairs that straddle p become ordered, the
+   rest of the array is unchanged, and the pairs with one position outside
+   [lo..hi] stay ordered since [lo..hi] is only permuted. *)
+lemma sorted_except_partition (t t' : elem array) lo p hi rest :
+  0 <= lo <= p <= hi < size t =>
+  disj ((lo, hi) :: rest) =>
+  sorted_except ((lo, hi) :: rest) t =>
+  partition_on t' lo p hi => perm_eq_on t t' lo hi => eq_except t t' lo hi =>
+  sorted_except ((lo, p - 1) :: (p + 1, hi) :: rest) t'.
+proof.
+  move=> hb /= [hd _] hs [hlt hge] hp [hsz he] i j hij.
+  have hr : forall i' j', i' < j' => covered rest i' j' => j' < lo \/ hi < i'.
+  + by move=> i' j' hij' [r [hr h]]; have := hd r hr; rewrite /apart /#.
+  case: (covered rest i j) => hc.
+  + by left; case: hc => r [hr' h]; exists r; rewrite /= hr'.
+  have hs' : forall i' j', 0 <= i' < j' < size t => !(lo <= i' /\ j' <= hi) =>
+    !covered rest i' j' => t.[i'] <= t.[j'].
+  + move=> i' j' h h1 h2; case: (hs i' j' h) => [[r] hr' | //].
+    case: hr' => /= -[->> /# | hin] hh.
+    by have /# : covered rest i' j' by exists r.
+  case: (lo <= i <= hi) => hi_; case: (lo <= j <= hi) => hj.
+  + case: (j < p) => hjp; 1: by left; exists (lo, p - 1) => /#.
+    case: (p < i) => hip; 1: by left; exists (p + 1, hi) => /#.
+    by right; smt(le_trans).
+  + have [i' [hi' ->]] := perm_eq_on_get t t' lo hi i hi_ hp.
+    by right; rewrite -he 1:/#; apply hs'; smt().
+  + have [j' [hj' ->]] := perm_eq_on_get t t' lo hi j hj hp.
+    by right; rewrite -he 1:/#; apply hs'; smt().
+  by right; rewrite -!he 1,2:/#; apply hs'; smt().
+qed.
+
+lemma disj_partition lo p hi rest :
+  lo <= p <= hi => disj ((lo, hi) :: rest) => disj ((lo, p - 1) :: (p + 1, hi) :: rest).
+proof. by rewrite /= /apart => hp [hd ->] /=; smt(). qed.
+
+(* The random partition permutes [lo..hi] around the returned pivot and
+   leaves the rest of the array unchanged. *)
+hoare h_p_partition (t_ : elem array) lo_ hi_ : QS.p_partition :
+  t = t_ /\ lo = lo_ /\ hi = hi_ /\ 0 <= lo <= hi < size t
+  ==>
+  lo_ <= res.`2 <= hi_ /\ partition_on res.`1 lo_ res.`2 hi_ /\
+  perm_eq_on t_ res.`1 lo_ hi_ /\ eq_except t_ res.`1 lo_ hi_.
+proof.
+  proc; ecall (h_partition t QS.c lo hi); ecall (h_swap t p hi QS.c); rnd; skip => />.
+  move=> 3? p /supp_dinter hp; split; 1: smt().
+  move=> 3? t1 hsz hk h1 h2; split => [/# | _ [t2 p2] /= hp2 *].
+  have hsw : swapP t_ t1 p hi_ by done.
+  have hp1 := swapP_perm_eq_on _ _ lo_ hi_ _ _ _ _ hsw => //.
+  split; 1: by apply (perm_eq_on_trans t1).
+  smt().
+qed.
+
+op sorted_on (t : elem array) = forall i j, 0 <= i <= j < size t => t.[i] <= t.[j].
+
+(* Quicksort returns a sorted permutation of its input (the elements need
+   not be distinct). *)
+lemma qsort_sorted (t0 : elem array) :
+  hoare [Sort.qsort : t = t0 ==> sorted_on res /\ perm_eq (ofarray t0) (ofarray res)].
+proof.
+  proc.
+  while (size t = size t0 /\ ranges_in (size t) st /\ disj st /\ sorted_except st t /\
+         perm_eq_on t0 t 0 (size t0 - 1)).
+  + case: ((head witness st).`1 < (head witness st).`2).
+    (* a range of size at least 2 is partitioned *)
+    + rcondt 3; 1: by auto.
+      wp; exlim (head witness st).`1, (head witness st).`2, t => lo_ hi_ t_.
+      call (h_p_partition t_ lo_ hi_).
+      wp; skip => &hr [#] ->> ->> ->> hsz hr hd hs hp.
+      move: (st{hr}) hr hd hs => -[// | [l h] rest] hr hd hs _ /= hlt.
+      have [#] hl hh _ := hr (l, h) _ => //.
+      split => [/# | _].
+      move=> [t1 p1] /= [#] hpl hph hpart hperm hex.
+      have hsz1 : size t1 = size t{hr} by case: hex => ->.
+      split; 1: by rewrite hsz1.
+      split; 1: by rewrite hsz1 => r /= -[-> | [-> | hin]] /=; smt().
+      split; 1: by have := disj_partition l p1 h rest _ hd.
+      split; 1: by apply (sorted_except_partition t{hr}) => // /#.
+      apply (perm_eq_on_trans t{hr}) => //.
+      by rewrite -hsz; apply (perm_eq_on_eq_except _ _ l h) => // /#.
+    (* a range of size 0 or 1 is dropped *)
+    rcondf 3; 1: by auto.
+    wp; skip => &hr [#] hsz hr hd hs hp.
+    move: (st{hr}) hr hd hs => -[// | [l h] rest] hr hd hs _ /= hle.
+    split => //; split; 1: by move=> r hin; apply hr; rewrite /= hin.
+    split; 1: by case: hd.
+    by split => //; apply (sorted_except_pop _ l h) => /#.
+  wp; skip => />; split.
+  + split; 1: by move=> r /= ->; smt(size_ge0).
+    split; 2: by apply perm_eq_refl.
+    by move=> i j hij; left; exists (0, size t0 - 1) => /#.
+  move=> t1 hsz _ hs hp; split.
+  + move=> i j hij; case: (i = j) => [-> | hne]; 1: by right.
+    by have /# : 0 <= i < j < size t1 by smt().
+  by move: hp; rewrite /perm_eq_on array_sub_full -hsz array_sub_full.
+qed.
