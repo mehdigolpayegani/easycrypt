@@ -65,7 +65,9 @@ inequalities for a lower bound. By Jensen's inequality the function must be
 concave and increasing for ``[>=]``, and convex and increasing for ``[<=]``,
 with ``F 0 = 0``; the side condition is discharged automatically for the
 functions built from constants, the identity, sums and scalings (hint bases
-``concave_incr`` and ``convex_incr``). Equalities are refused.
+``concave_incr`` and ``convex_incr``). For an equality both conditions
+apply, which leaves the linear functions, and the two value obligations are
+equalities.
 
 ------------------------------------------------------------------------
 Procedure calls
