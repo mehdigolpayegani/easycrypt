@@ -37,6 +37,13 @@ judgment is an upper bound, ``[>=]``. A side written as a bare expectation
 Judgments on statements, ``ehoare [cmp] [c : {P | e} ==> {Q | g}]``, arise
 inside proofs, as for the other program logics.
 
+An exact judgment implies each of the two bounds: a ``[=]`` lemma or
+specification can be used by ``conseq``, ``conseq / F``, ``call`` and
+``call / F`` on a ``[<=]`` or ``[>=]`` goal, which is then weakened to the
+equality before the lemma is applied. Conversely, ``split`` on a ``[=]`` goal
+produces the two goals ``[<=]`` and ``[>=]``, which may then be proved by
+different rules or with different witnesses.
+
 ------------------------------------------------------------------------
 Structural tactics
 ------------------------------------------------------------------------

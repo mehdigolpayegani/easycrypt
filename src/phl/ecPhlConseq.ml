@@ -673,6 +673,42 @@ let t_bdHoareF_conseq_nm = gen_conseq_nm t_bdHoareF_notmod t_bdHoareF_conseq
 let t_bdHoareS_conseq_nm = gen_conseq_nm t_bdHoareS_notmod t_bdHoareS_conseq
 
 (* -------------------------------------------------------------------- *)
+(* An exact judgment implies each of the two bounds: a goal that is a
+   lower or an upper bound follows from the same judgment as an equality.
+   [t_ehoare_eq_weaken_if cmp] does so when a lemma of direction [cmp]
+   is about to be applied to the goal, and is the identity otherwise.
+   [t_ehoare_split] is the converse rule: an equality from its two bounds. *)
+let t_ehoare_eq_weaken tc =
+  match (FApi.tc1_goal tc).f_node with
+  | FeHoareF hf when hf.ehf_cmp <> FHeq ->
+      FApi.xmutate1 tc `HlConseq
+        [f_eHoareF_r { hf with ehf_cmp = FHeq } [@alert "-priv_pl"]]
+  | FeHoareS hs when hs.ehs_cmp <> FHeq ->
+      FApi.xmutate1 tc `HlConseq
+        [f_eHoareS_r { hs with ehs_cmp = FHeq } [@alert "-priv_pl"]]
+  | _ -> tc_error !!tc "the goal is not a lower or upper ehoare bound"
+
+let t_ehoare_eq_weaken_if (cmp : hoarecmp) tc =
+  match cmp, (FApi.tc1_goal tc).f_node with
+  | FHeq, FeHoareF hf when hf.ehf_cmp <> FHeq -> t_ehoare_eq_weaken tc
+  | FHeq, FeHoareS hs when hs.ehs_cmp <> FHeq -> t_ehoare_eq_weaken tc
+  | _ -> t_id tc
+
+let t_ehoare_split tc =
+  match (FApi.tc1_goal tc).f_node with
+  | FeHoareF hf when hf.ehf_cmp = FHeq ->
+      FApi.xmutate1 tc `HlConseq
+        [f_eHoareF_r { hf with ehf_cmp = FHle } [@alert "-priv_pl"];
+         f_eHoareF_r { hf with ehf_cmp = FHge } [@alert "-priv_pl"]]
+  | FeHoareS hs when hs.ehs_cmp = FHeq ->
+      FApi.xmutate1 tc `HlConseq
+        [f_eHoareS_r { hs with ehs_cmp = FHle } [@alert "-priv_pl"];
+         f_eHoareS_r { hs with ehs_cmp = FHge } [@alert "-priv_pl"]]
+  | FeHoareF _ | FeHoareS _ ->
+      tc_error !!tc "split applies to an exact ([=]) ehoare judgment"
+  | _ -> raise InvalidGoalShape
+
+(* -------------------------------------------------------------------- *)
 (* Jensen-based consequence transform for ehoare.
  *
  * Given a concave increasing function fc : xreal → xreal:
@@ -959,16 +995,20 @@ let process_concave
     | FHle -> t_convex_incr
     | FHeq -> t_concave_convex_incr in
 
-  match (snd f1).f_node with
-  | FeHoareS hs ->
-    FApi.t_first (t_shape hs.ehs_cmp)
-        (FApi.t_on1seq 3 (t_ehoareS_transform fc (ehs_pr hs) (ehs_po hs)) t_apply_r tc)
+  (* the shape follows the direction of the goal; an exact lemma serves
+     as either bound *)
+  match (snd f1).f_node, (FApi.tc1_goal tc).f_node with
+  | FeHoareS hs, FeHoareS gs ->
+    FApi.t_first (t_shape gs.ehs_cmp)
+      (FApi.t_on1seq 3 (t_ehoareS_transform fc (ehs_pr hs) (ehs_po hs))
+         (FApi.t_seq (t_ehoare_eq_weaken_if hs.ehs_cmp) t_apply_r) tc)
 
-  | FeHoareF hf ->
-     FApi.t_first (t_shape hf.ehf_cmp)
-       (FApi.t_on1seq 3 (t_ehoareF_transform fc (ehf_pr hf) (ehf_po hf)) t_apply_r tc)
+  | FeHoareF hf, FeHoareF gf ->
+     FApi.t_first (t_shape gf.ehf_cmp)
+       (FApi.t_on1seq 3 (t_ehoareF_transform fc (ehf_pr hf) (ehf_po hf))
+          (FApi.t_seq (t_ehoare_eq_weaken_if hf.ehf_cmp) t_apply_r) tc)
 
-  | _ -> tc_error !!tc "conseq concave: not a ehoare judgement"
+  | _, _ -> tc_error !!tc "conseq concave: not a ehoare judgement"
 
 
 
@@ -1631,7 +1671,9 @@ let t_hi_conseq_ehoareS
   (* ehoareS / ehoareS / ⊥ / ⊥ *)
   | Some ((_, {f_node = FeHoareS hs}) as nf1), None, None ->
     let tac = if notmod then t_ehoareS_conseq_nm else t_ehoareS_conseq in
-    FApi.t_last (t_hi_apply_r nf1) (tac (ehs_pr hs) (ehs_po hs) tc)
+    FApi.t_last
+      (FApi.t_seq (t_ehoare_eq_weaken_if hs.ehs_cmp) (t_hi_apply_r nf1))
+      (tac (ehs_pr hs) (ehs_po hs) tc)
 
   | _ -> t_hi_error concl f1 f2 f3 tc
 
@@ -1655,7 +1697,9 @@ let t_hi_conseq_ehoareF
   (* ehoareF / ehoareF / ⊥ / ⊥ *)
   | Some ((_, {f_node = FeHoareF hf}) as nf1), None, None ->
     let tac = if notmod then t_ehoareF_conseq_nm else t_ehoareF_conseq in
-    FApi.t_last (t_hi_apply_r nf1) (tac (ehf_pr hf) (ehf_po hf) tc)
+    FApi.t_last
+      (FApi.t_seq (t_ehoare_eq_weaken_if hf.ehf_cmp) (t_hi_apply_r nf1))
+      (tac (ehf_pr hf) (ehf_po hf) tc)
 
   (* ehoareF / equivF / ehoareF — transitivity via equiv *)
   | Some ((_, {f_node = FequivF ef}) as nef), Some((_, f2) as nf2), _ ->

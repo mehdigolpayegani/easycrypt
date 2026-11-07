@@ -130,7 +130,11 @@ and process1_logic (ttenv : ttenv) (t : logtactic located) (tc : tcenv1) =
     | Preflexivity        -> process_reflexivity
     | Passumption         -> process_assumption
     | Psmt pi             -> process_smt ~loc:(loc t) ttenv (Some pi)
-    | Psplit i            -> process_split ?i
+    | Psplit i            ->
+        (fun tc ->
+           match (FApi.tc1_goal tc).f_node with
+           | FeHoareF _ | FeHoareS _ -> EcPhlConseq.t_ehoare_split tc
+           | _ -> process_split ?i tc)
     | Pfield st           -> process_algebra `Solve `Field st
     | Pring st            -> process_algebra `Solve `Ring  st
     | Palg_norm           -> EcStrongRing.t_alg_eq

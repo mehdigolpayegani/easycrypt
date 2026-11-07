@@ -33,6 +33,11 @@ val t_bdHoareS_conseq_nm  : ss_inv -> ss_inv -> FApi.backward
 (* -------------------------------------------------------------------- *)
 val t_ehoareS_transform : ss_inv -> ss_inv -> ss_inv -> FApi.backward
 val t_ehoareF_transform : ss_inv -> ss_inv -> ss_inv -> FApi.backward
+(* an exact judgment serves as either bound, and conversely *)
+val t_ehoare_eq_weaken    : FApi.backward
+val t_ehoare_eq_weaken_if : hoarecmp -> FApi.backward
+val t_ehoare_split        : FApi.backward
+
 val t_concave_incr : FApi.backward
 val t_convex_incr : FApi.backward
 

@@ -267,10 +267,13 @@ let string_of_dir = function
 
 let t_ehoare_call_frame ?fc cmp fpre fpost tc =
   let hyps, env, hs, _, fn, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
-  if cmp <> hs.ehs_cmp then
+  (* the specification has the direction of the goal, or is exact, in which
+     case it is weakened to the direction of the goal before being applied *)
+  if cmp <> FHeq && cmp <> hs.ehs_cmp then
     tc_error !!tc
       "call: the specification is a %s judgment but the goal is a %s one"
       (string_of_dir cmp) (string_of_dir hs.ehs_cmp);
+  let cmp = hs.ehs_cmp in
   let m = EcMemory.memory hs.ehs_m in
   let call, _ = tc1_last_call tc hs.ehs_s in
   let fc = omap (fun fc -> ss_inv_rebind fc m) fc in
@@ -745,10 +748,12 @@ let process_call side info tc =
       tc_error !!tc "cannot infer all placeholders";
     PT.concretize pt in
 
+  let lcmp = match ax.f_node with FeHoareF hf -> hf.ehf_cmp | _ -> FHge in
   FApi.t_seqsub
     (t_call side ax)
     [FApi.t_seqs
-       [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
+       [EcPhlConseq.t_ehoare_eq_weaken_if lcmp;
+        EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
         !subtactic; t_trivial];
      t_id]
     tc
@@ -846,11 +851,13 @@ let process_call_concave (fc, info) tc =
     | FHle -> [EcPhlConseq.t_convex_incr]
     | FHeq -> [EcPhlConseq.t_concave_incr; EcPhlConseq.t_convex_incr] in
 
+  let lcmp = match ax.f_node with FeHoareF hf -> hf.ehf_cmp | _ -> FHge in
   FApi.t_seqsub
     (t_call ax)
     (t_shape @
      [ FApi.t_seqs
-         [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
+         [EcPhlConseq.t_ehoare_eq_weaken_if lcmp;
+          EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
           !subtactic; t_trivial];
        t_id])
     tc

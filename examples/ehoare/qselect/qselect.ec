@@ -192,11 +192,15 @@ proof.
   rewrite (partition_on_sindex _ _ _ _ _ hpart) // /#. 
 qed.
 
-ehoare eh_p_partition f t_ c_ lo_ hi_: QS.p_partition :
+(* the random partition is exact: it costs hi - lo comparisons and its
+   pivot is uniform on the range, so the specification is an equality and
+   serves both bounds on the selection *)
+lemma eh_p_partition (f : int -> int -> xreal) (t_ : elem array) (c_ lo_ hi_ : int) :
+  ehoare [=] [QS.p_partition :
   {c = c_ /\ lo = lo_ /\ hi = hi_ /\ t = t_ /\ uniq_on t lo hi /\ 0 <= lo_ <= hi_ < size t |
    Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
   {c = c_ + (hi_ - lo_) * clt /\ lo_ <= res.`2 <= hi_ /\ uniq_on res.`1 lo_ hi_ /\ size res.`1 = size t_ |
-   f res.`2 c}.
+   f res.`2 c}].
 proof.
   conseq (p_partitionE t_ lo_ hi_)
     (_: {c = c_ /\ lo = lo_ /\ hi = hi_ | Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
@@ -351,19 +355,6 @@ proof.
   by rewrite RealOrder.lerr_eq; apply BRA.eq_big_int => i /= hi_; smt().
 qed.
 
-lemma eh_p_partition_le (f : int -> int -> xreal) (t_ : elem array) (c_ lo_ hi_ : int) :
-  ehoare [<=] [QS.p_partition :
-  {c = c_ /\ lo = lo_ /\ hi = hi_ /\ t = t_ /\ uniq_on t lo hi /\ 0 <= lo_ <= hi_ < size t |
-   Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
-  {c = c_ + (hi_ - lo_) * clt /\ lo_ <= res.`2 <= hi_ /\ uniq_on res.`1 lo_ hi_ /\ size res.`1 = size t_ |
-   f res.`2 c}].
-proof.
-  conseq (p_partitionE t_ lo_ hi_)
-    (_: {c = c_ /\ lo = lo_ /\ hi = hi_ | Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
-        {c = c_ + (hi_ - lo_) * clt | f res c}) => />.
-  + by move=> &1 *; exists c_ (lo, hi){1}.
-  proc; auto.
-qed.
 
 (* The expected cost of qselect on an array of size n is at least
    2n - 2 H n, whatever the searched position; the bound is reached when
@@ -377,7 +368,7 @@ proof.
                   c%xr + (lbq (hi - lo + 1))%xr) (hi - lo).
   + by move=> &hr [#] 3? hhi *; rewrite (: hi{hr} - lo{hr} + 1 = 1) 1:/# lbq1.
   + move=> k; wp; exlim t, c, lo, hi, pos => t_ c_ lo_ hi_ pos_.
-    call (eh_p_partition_le (fun p (c : int) =>
+    call (eh_p_partition (fun p (c : int) =>
             c%xr + (lbq (if p = pos_ then 1 else if p < pos_ then hi_ - p else p - lo_))%xr)
           t_ c_ lo_ hi_).
     skip => &hr /= [#] 5!-> [#] hlo hpos hhi hsz huniq hc hlt hk; split.

@@ -177,25 +177,8 @@ qed.
 lemma sgd_noise_floor :
   ehoare [<=] [SGD.run : {true | B%xr} ==> {true | res%xr}].
 proof.
-have hg : 0%r <= gamma <= 1%r by smt(gamma_bnd).
-conseq (: {true | (A * SGD.x * SGD.x + B)%xr} ==> {true | res%xr}).
+conseq sgd_error.
 + move=> &hr; apply xle_rle; split; 1: exact B_ge0.
   by have := mulr_ge0 A (SGD.x{hr} * SGD.x{hr}) A_ge0 (sq_ge0 SGD.x{hr}); smt().
-+ by [].
-proc.
-while /sum (true, (if SGD.alive then A * SGD.x * SGD.x + B else SGD.x * SGD.x)%xr)
-           ((K * (A * SGD.x * SGD.x + B))%xr).
-+ by move=> &hr ->.
-+ auto => &hr /> ha; rewrite Ep_dbool /= Ep_dbiased; 1: exact hg.
-  rewrite Ep_dbiased; 1: exact hg.
-  rewrite /= !to_pos_pos;
-    1..7: ((try apply quad_ge0); (try apply sq_ge0); smt(gamma_bnd)).
-  by rewrite mart_step.
-+ by move=> &hr _; rewrite /is_real.
-+ auto => &hr /> ha; rewrite Ep_dbool /= Ep_dbiased; 1: exact hg.
-  rewrite Ep_dbiased; 1: exact hg.
-  rewrite /= !to_pos_pos;
-    1..6: ((try apply quad_ge0); (try (apply mulr_ge0; [exact K_ge0 | apply quad_ge0])); smt(gamma_bnd)).
-  by apply sum_step.
-by auto.
+by [].
 qed.

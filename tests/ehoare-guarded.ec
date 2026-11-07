@@ -1312,3 +1312,52 @@ proof. proc. fail while /ast (CD.n%r) (fun (_ : real) => 1%r) (fun (_ : real) =>
 lemma t_rule_rejects_unknown :
   ehoare [<=] [CD.run : {0 <= CD.n | 1%xr} ==> {CD.n <= 0 | 1%xr}].
 proof. proc. fail while /foo CD.n. abort.
+
+(* -------------------------------------------------------------------- *)
+(* An exact judgment serves as either bound: a [=] lemma applies to a
+   [<=] or [>=] goal through conseq, conseq / F, call and call / F; and
+   split proves an exact judgment from its two bounds. *)
+lemma t_eq_weaken_conseq_le :
+  ehoare [<=] [TC.f : {true | 1%xr} ==> {true | 1%xr}].
+proof. by conseq t_transform_inner_eq. qed.
+
+lemma t_eq_weaken_conseq_ge :
+  ehoare [>=] [TC.f : {true | 1%xr} ==> {true | 1%xr}].
+proof. by conseq t_transform_inner_eq. qed.
+
+lemma t_eq_weaken_transform_le :
+  ehoare [<=] [TC.f : {true | 2%xr} ==> {true | 2%xr}].
+proof.
+  conseq / (fun (y : xreal) => y * 2%xr) t_transform_inner_eq.
+  + by move=> _ /=.
+  by move=> _ /=.
+qed.
+
+lemma t_eq_weaken_call_le :
+  ehoare [<=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by proc; call f_eq; auto. qed.
+
+lemma t_eq_weaken_call_ge :
+  ehoare [>=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by proc; call f_eq; auto. qed.
+
+lemma t_eq_weaken_callF_ge :
+  ehoare [>=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * 2%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * 2%xr}].
+proof. by proc; call /(fun z => z * 2%xr) f_eq; auto. qed.
+
+(* a bound does not serve as an exact judgment *)
+lemma t_eq_rejects_bound :
+  ehoare [=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. proc. fail call f_le. abort.
+
+lemma t_eq_split_F :
+  ehoare [=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. by split; [exact f_le | exact f_ge]. qed.
+
+lemma t_eq_split_S :
+  ehoare [=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. by proc; split; auto => /> /#. qed.
+
+lemma t_split_rejects_bound :
+  ehoare [<=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. fail split. abort.
