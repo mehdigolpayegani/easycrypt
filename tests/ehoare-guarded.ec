@@ -1197,3 +1197,100 @@ qed.
 lemma t_conseq_noframe :
   ehoare [<=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
 proof. conseq [-frame] f_le => />. abort.
+
+(* -------------------------------------------------------------------- *)
+(* The named lower-bound while rules, [while /rule args], on a countdown
+   loop: summability (the witness bounds the sum over the iterations of the
+   invariant on the running part), ascent (it bounds the expected number of
+   iterations plus the expected increases of the invariant), bounded
+   (McIver & Morgan: a bounded invariant and almost-sure termination), and
+   ast (McIver, Morgan, Kaminski & Katoen: a supermartingale variant that
+   decreases by d with probability at least p, for antitone p and d).
+   [while /variant] and [while /decay] name the two older rules. *)
+module CD = {
+  var n, c : int
+  proc run () : unit = {
+    while (0 < n) { n <- n - 1; c <- c + 1; }
+  }
+}.
+
+lemma t_sum :
+  ehoare [=] [CD.run : {0 <= CD.n /\ 0 <= CD.c | (CD.c + CD.n)%xr} ==> {CD.n <= 0 | (CD.c + CD.n)%xr}].
+proof.
+proc.
+while /sum ((CD.n * (CD.c + CD.n))%xr).
++ by move=> &hr /> /#.
++ by auto => /> *; split; [smt() | congr; ring].
++ by move=> &hr _; rewrite /is_real.
+auto => &hr /> hn hc hn0; case: (0 < CD.n{hr} - 1) => h /=.
++ rewrite !to_pos_pos; 1..3: smt().
+  rewrite -fromintD le_fromint.
+  by have -> : (CD.n{hr} - 1) * (CD.c{hr} + 1 + (CD.n{hr} - 1)) + (CD.c{hr} + 1 + (CD.n{hr} - 1))
+             = CD.n{hr} * (CD.c{hr} + CD.n{hr}) by ring.
+by rewrite to_pos_pos; smt().
+qed.
+
+lemma t_ascent :
+  ehoare [<=] [CD.run : {0 <= CD.n /\ 0 <= CD.c | (CD.c + CD.n)%xr} ==> {CD.n <= 0 | (CD.c + CD.n)%xr}].
+proof.
+proc.
+while /ascent (CD.n%xr).
++ by move=> &hr /> /#.
++ auto => &hr /> *; split; 1: smt().
+  by have -> : CD.c{hr} + 1 + (CD.n{hr} - 1) = CD.c{hr} + CD.n{hr} by ring.
++ by move=> &hr _; rewrite /is_real.
+move=> v; auto => &hr /> hn hc hn0 hv hE.
+have <- : (CD.c{hr} + CD.n{hr})%r = v by apply of_reald_pinj => //; smt().
+case: (0 < CD.n{hr} - 1) => h /=; last by rewrite to_pos_pos; smt().
+rewrite !to_pos_pos; smt().
+qed.
+
+lemma t_ast :
+  ehoare [<=] [CD.run : {0 <= CD.n | 1%xr} ==> {CD.n <= 0 | 1%xr}].
+proof.
+proc.
+while /ast (CD.n%r) (fun (_ : real) => 1%r) (fun (_ : real) => 1%r).
++ by move=> &hr /> /#.
++ by auto => /> /#.
++ by move=> &hr /#.
++ by move=> v; auto => &hr /> *; smt().
++ by move=> v; auto => &hr /> *; smt().
+by move=> &hr; smt().
+qed.
+
+lemma t_bounded :
+  ehoare [<=] [CD.run : {0 <= CD.n /\ CD.c + CD.n = 5 | (CD.c + CD.n)%xr} ==> {(0 <= CD.n /\ CD.c + CD.n = 5) /\ CD.n <= 0 | (CD.c + CD.n)%xr}].
+proof.
+proc.
+while /bounded 5%r.
++ by move=> &hr /> /#.
++ auto => &hr /> *; split; 1: smt().
+  by have -> : CD.c{hr} + 1 + (CD.n{hr} - 1) = CD.c{hr} + CD.n{hr} by ring.
++ by move=> &hr /> _ ->.
+while /variant CD.n.
++ by move=> k; auto => /> /#.
+by move=> &hr /#.
+qed.
+
+lemma t_rule_variant_named :
+  ehoare [<=] [CD.run : {0 <= CD.n | 1%xr} ==> {CD.n <= 0 | 1%xr}].
+proof.
+proc; while /variant CD.n.
++ by move=> &hr /> /#.
++ by move=> k; auto => /> /#.
+by move=> &hr /#.
+qed.
+
+(* the named rules are for lower bounds and equalities only, the value of
+   the McIver rule must be 1, and the name must be known *)
+lemma t_rule_rejects_upper :
+  ehoare [>=] [CD.run : {0 <= CD.n | (CD.c + CD.n)%xr} ==> {CD.n <= 0 | (CD.c + CD.n)%xr}].
+proof. proc. fail while /sum ((CD.n * (CD.c + CD.n))%xr). abort.
+
+lemma t_rule_ast_rejects_value :
+  ehoare [<=] [CD.run : {0 <= CD.n | CD.n%xr} ==> {CD.n <= 0 | CD.n%xr}].
+proof. proc. fail while /ast (CD.n%r) (fun (_ : real) => 1%r) (fun (_ : real) => 1%r). abort.
+
+lemma t_rule_rejects_unknown :
+  ehoare [<=] [CD.run : {0 <= CD.n | 1%xr} ==> {CD.n <= 0 | 1%xr}].
+proof. proc. fail while /foo CD.n. abort.

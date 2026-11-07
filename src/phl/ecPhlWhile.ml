@@ -327,6 +327,205 @@ let t_ehoare_while_variant_seq (loop_inv : ss_inv) (v : ss_inv) tc =
     tc
 
 (* -------------------------------------------------------------------- *)
+(* Lower-bound (or exact) while rules with a witness, for
+     {P | E} while b do c {P /\ !b | E}.
+   All share the premise that the body preserves the invariant in the
+   direction of the goal (for an equality, the upper bound is rule Park);
+   the witness then certifies that the part of the expectation carried by
+   the runs still inside the loop vanishes:
+   - summability: {P /\ b | r} >= c {true | [b] ** (r + E)}, so that r bounds
+     the sum over the iterations of E on the running part;
+   - ascent (Hark et al.): forall v, {P /\ b /\ E = v | r} >= c
+     {true | [b] ** (r + 1 + monus E v)}, so that r bounds the expected number
+     of iterations plus the expected increases of E;
+   - bounded (McIver & Morgan): E <= C under P, and the loop terminates
+     almost surely, {P | 1} <= while b do c {P /\ !b | 1};
+   - ast (McIver, Morgan, Kaminski & Katoen): E = 1, and a real variant V >= 0,
+     positive inside the loop, that is a supermartingale, forall v,
+     {P /\ b /\ V = v | v} >= c {P | V}, and decreases by d(v) with probability
+     at least p(v), forall v, {P /\ b /\ V = v | 1 - p v} >= c
+     {true | [v - d v < V]}, for p : R -> (0,1] and d : R -> (0,oo)
+     antitone.
+   The scaffolding canonicalizes the exit post and splits an initialization
+   prefix, as for the variant and decay rules. *)
+
+let ehoare_lower_goal name tc =
+  let env, hyps, _ = FApi.tc1_eflat tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the %s while rule applies to lower-bound ([<=]) and equality ([=]) \
+       judgments only" name;
+  let (e, c), s = tc1_last_while tc hs.ehs_s in
+  check_single_stmt tc s;
+  let m = EcMemory.memory hs.ehs_m in
+  let e = ss_inv_of_expr m e in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let exp_po = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] in
+  if not (EcReduction.ss_inv_alpha_eq hyps (ehs_po hs)
+            { (ehs_po hs) with inv = exp_po }) then
+    tc_error !!tc "ehoare while-%s rule: wrong post-condition" name;
+  (env, hyps, hs, m, e.inv, c, pre_g, pre_v)
+
+(* [b] ** x: the value on the runs that stay inside the loop *)
+let f_bguard b x = f_xsmul (f_r2rp (f_b2r b)) x
+
+let f_xr1 = f_r2xr f_r1
+
+(* the body preserves the invariant, in the direction of the goal *)
+let g_body hs b c pre_g pre_v =
+  f_eHoareS_r
+    { hs with ehs_pr = f_tuple [f_and_simpl pre_g b; pre_v]; ehs_s = c;
+              ehs_po = f_tuple [pre_g; pre_v] }
+    [@alert "-priv_pl"]
+
+let mem_prop_of hs body =
+  EcSubst.f_forall_mems_ss_inv hs.ehs_m { (ehs_pr hs) with inv = body }
+
+let t_ehoare_while_sum_core (r : ss_inv) tc =
+  let _, _, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "summability" tc in
+  let r = (EcSubst.ss_inv_rebind r m).inv in
+  let p_and_b = f_and_simpl pre_g b in
+  let g1 = g_body hs b c pre_g pre_v in
+  let g2 =
+    mem_prop_of hs
+      (f_imp_simpl p_and_b (f_and (f_is_real pre_v) (f_is_real r))) in
+  let g3 =
+    f_eHoareS_r
+      { hs with ehs_pr = f_tuple [p_and_b; r]; ehs_s = c;
+                ehs_po = f_tuple [f_true; f_bguard b (f_xadd r pre_v)];
+                ehs_cmp = FHge }
+      [@alert "-priv_pl"] in
+  FApi.xmutate1 tc `While [g1; g2; g3]
+
+let t_ehoare_while_ascent_core (r : ss_inv) tc =
+  let _, _, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "ascent" tc in
+  let r = (EcSubst.ss_inv_rebind r m).inv in
+  let p_and_b = f_and_simpl pre_g b in
+  let g1 = g_body hs b c pre_g pre_v in
+  let g2 =
+    mem_prop_of hs
+      (f_imp_simpl p_and_b (f_and (f_is_real pre_v) (f_is_real r))) in
+  let v_id = EcIdent.create "v" in
+  let vr = f_local v_id treal in
+  let v = f_r2xr vr in
+  (* v ranges over the values of E, which are non-negative reals *)
+  let g3 =
+    f_forall [(v_id, GTty treal)]
+      (f_eHoareS_r
+         { hs with
+           ehs_pr  = f_tuple [f_ands [p_and_b; f_real_le f_r0 vr; f_eq pre_v v]; r];
+           ehs_s   = c;
+           ehs_po  = f_tuple [f_true;
+                              f_bguard b
+                                (f_xadd (f_xadd r f_xr1) (f_monus pre_v v))];
+           ehs_cmp = FHge }
+         [@alert "-priv_pl"]) in
+  FApi.xmutate1 tc `While [g1; g2; g3]
+
+let t_ehoare_while_bounded_core (bnd : ss_inv) tc =
+  let _, _, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "bounded" tc in
+  let bnd = (EcSubst.ss_inv_rebind bnd m).inv in
+  let g1 = g_body hs b c pre_g pre_v in
+  let g2 = mem_prop_of hs (f_imp_simpl pre_g (f_xreal_le pre_v (f_r2xr bnd))) in
+  (* the loop terminates almost surely from P *)
+  let g3 =
+    f_eHoareS_r
+      { hs with ehs_pr = f_tuple [pre_g; f_xr1];
+                ehs_po = f_tuple [f_and_simpl pre_g (f_not b); f_xr1];
+                ehs_cmp = FHle }
+      [@alert "-priv_pl"] in
+  FApi.xmutate1 tc `While [g1; g2; g3]
+
+let t_ehoare_while_ast_core (vf : ss_inv) (p : ss_inv) (d : ss_inv) tc =
+  let _, hyps, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "ast" tc in
+  if not (EcReduction.is_conv hyps pre_v f_xr1) then
+    tc_error !!tc
+      "the McIver rule proves almost-sure termination: the value of the \
+       invariant must be 1%%xr";
+  let vf = (EcSubst.ss_inv_rebind vf m).inv in
+  let p  = (EcSubst.ss_inv_rebind p  m).inv in
+  let d  = (EcSubst.ss_inv_rebind d  m).inv in
+  let app f x = f_app_simpl f [x] treal in
+  let p_and_b = f_and_simpl pre_g b in
+  let g1 = g_body hs b c pre_g pre_v in
+  (* V is non-negative, and positive inside the loop *)
+  let g2 =
+    mem_prop_of hs
+      (f_and (f_imp_simpl pre_g (f_real_le f_r0 vf))
+             (f_imp_simpl p_and_b (f_real_lt f_r0 vf))) in
+  let v_id = EcIdent.create "v" in
+  let v = f_local v_id treal in
+  let pre_v_eq = f_and_simpl p_and_b (f_eq vf v) in
+  (* V is a supermartingale *)
+  let g3 =
+    f_forall [(v_id, GTty treal)]
+      (f_eHoareS_r
+         { hs with ehs_pr = f_tuple [pre_v_eq; f_r2xr v]; ehs_s = c;
+                   ehs_po = f_tuple [pre_g; f_r2xr vf]; ehs_cmp = FHge }
+         [@alert "-priv_pl"]) in
+  (* V decreases by d v with probability at least p v *)
+  let g4 =
+    f_forall [(v_id, GTty treal)]
+      (f_eHoareS_r
+         { hs with
+           ehs_pr  = f_tuple [pre_v_eq; f_r2xr (f_real_sub f_r1 (app p v))];
+           ehs_s   = c;
+           ehs_po  = f_tuple [f_true;
+                              f_b2xr (f_real_lt (f_real_sub v (app d v)) vf)];
+           ehs_cmp = FHge }
+         [@alert "-priv_pl"]) in
+  (* p and d are antitone, p into (0, 1] and d into (0, oo) *)
+  let x_id = EcIdent.create "x" and y_id = EcIdent.create "y" in
+  let x = f_local x_id treal and y = f_local y_id treal in
+  let g5 =
+    mem_prop_of hs
+      (f_and
+         (f_forall [(x_id, GTty treal); (y_id, GTty treal)]
+            (f_imp (f_real_le f_r0 x) (f_imp (f_real_le x y)
+               (f_and (f_real_le (app p y) (app p x))
+                      (f_real_le (app d y) (app d x))))))
+         (f_forall [(x_id, GTty treal)]
+            (f_imp (f_real_le f_r0 x)
+               (f_and (f_real_lt f_r0 (app p x))
+                      (f_and (f_real_le (app p x) f_r1)
+                             (f_real_lt f_r0 (app d x))))))) in
+  FApi.xmutate1 tc `While [g1; g2; g3; g4; g5]
+
+(* Canonicalize the exit post with consequence before applying a rule. *)
+let t_ehoare_while_lower name core tc =
+  let hyps = FApi.tc1_hyps tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the %s while rule applies to lower-bound ([<=]) and equality ([=]) \
+       judgments only" name;
+  let (e, _), _ = tc1_last_while tc hs.ehs_s in
+  let m = EcMemory.memory hs.ehs_m in
+  let e = ss_inv_of_expr m e in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let canon_post =
+    { (ehs_po hs) with
+      inv = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] } in
+  if EcReduction.ss_inv_alpha_eq hyps (ehs_po hs) canon_post then
+    core tc
+  else
+    (EcPhlConseq.t_ehoareS_conseq (ehs_pr hs) canon_post @+
+       [t_trivial; t_id; core]) tc
+
+(* Split an initialization prefix from the final loop first. *)
+let t_ehoare_while_lower_seq name (loop_inv : ss_inv) core tc =
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the %s while rule applies to lower-bound ([<=]) and equality ([=]) \
+       judgments only" name;
+  let tc =
+    FApi.t_rotate `Left 1
+      (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) loop_inv tc) in
+  FApi.t_sub [t_ehoare_while_lower name core; t_id] tc
+
+(* -------------------------------------------------------------------- *)
 (* rule >=, <=, =, with a stricly decreasing variant *)
 let t_bdhoare_while_r inv vrnt tc =
   let env = FApi.tc1_env tc in
@@ -752,7 +951,8 @@ let t_equiv_ll_while_disj   = FApi.t_low2 "equiv-while"   t_equiv_ll_while_disj_
 let process_while side winfos tc =
   let { EP.wh_inv  = phi ;
         EP.wh_vrnt = vrnt;
-        EP.wh_bds  = bds ; } = winfos in
+        EP.wh_bds  = bds ;
+        EP.wh_rule = rule; } = winfos in
 
   match (FApi.tc1_goal tc).f_node with
   | FhoareS _ -> begin
@@ -768,6 +968,10 @@ let process_while side winfos tc =
       (* Standard while handles upper bounds; While-Mult handles lower bounds. *)
       match hs.ehs_cmp with
       | FHge -> begin
+          if Option.is_some rule then
+            tc_error !!tc
+              "the named while rules are for lower-bound ([<=]) and equality \
+               ([=]) judgments; an upper bound uses [while E] or [while (P, E)]";
           match vrnt, bds with
           | None, None ->
               let _, inv =
@@ -790,6 +994,52 @@ let process_while side winfos tc =
             match EcLocation.unloc phi with
             | EP.PFtuple [_; _] -> true
             | _ -> false in
+          let pair () =
+            snd (TTC.tc1_process_Xhl_form tc (ttuple [tbool; txreal]) phi) in
+          let xr pf = snd (TTC.tc1_process_Xhl_formula_xreal tc pf) in
+          let re pf = snd (TTC.tc1_process_Xhl_form tc treal pf) in
+          let fn pf = snd (TTC.tc1_process_Xhl_form tc (tfun treal treal) pf) in
+          let it pf = snd (TTC.tc1_process_Xhl_form tc tint pf) in
+          match rule with
+          | Some rule -> begin
+              (* [while /rule args]: the rule is named; on a bare loop the
+                 invariant is read from the pre, otherwise a guarded loop
+                 invariant (P, E) comes first and splits a prefix. *)
+              let lower = t_ehoare_while_lower in
+              let seq   = t_ehoare_while_lower_seq in
+              match EcLocation.unloc rule, is_pair, vrnt, bds with
+              | "variant", false, None, None ->
+                  t_ehoare_while_variant (it phi) tc
+              | "variant", true, Some v, None ->
+                  t_ehoare_while_variant_seq (pair ()) (it v) tc
+              | "decay", false, Some beta, None ->
+                  t_ehoare_while_mult (xr phi) (re beta) tc
+              | "decay", true, Some v, Some (`Mult beta) ->
+                  t_ehoare_while_mult_seq (pair ()) (xr v) (re beta) tc
+              | "sum", false, None, None ->
+                  lower "summability" (t_ehoare_while_sum_core (xr phi)) tc
+              | "sum", true, Some r, None ->
+                  seq "summability" (pair ()) (t_ehoare_while_sum_core (xr r)) tc
+              | "ascent", false, None, None ->
+                  lower "ascent" (t_ehoare_while_ascent_core (xr phi)) tc
+              | "ascent", true, Some r, None ->
+                  seq "ascent" (pair ()) (t_ehoare_while_ascent_core (xr r)) tc
+              | "bounded", false, None, None ->
+                  lower "bounded" (t_ehoare_while_bounded_core (re phi)) tc
+              | "bounded", true, Some bnd, None ->
+                  seq "bounded" (pair ()) (t_ehoare_while_bounded_core (re bnd)) tc
+              | "ast", false, Some p, Some (`Mult d) ->
+                  lower "ast" (t_ehoare_while_ast_core (re phi) (fn p) (fn d)) tc
+              | "ast", true, Some v, Some (`Bd (p, d)) ->
+                  seq "ast" (pair ()) (t_ehoare_while_ast_core (re v) (fn p) (fn d)) tc
+              | ("variant" | "decay" | "sum" | "ascent" | "bounded" | "ast"), _, _, _ ->
+                  tc_error !!tc
+                    "lower-bound ([<=]) or equality ([=]) while rules:                      [while /variant V], [while /decay V beta],                      [while /sum r], [while /ascent r], [while /bounded C],                      [while /ast V p d], each optionally preceded by a                      guarded loop invariant (P, E)"
+              | name, _, _, _ ->
+                  tc_error !!tc
+                    "unknown while rule `%s': variant, decay, sum, ascent,                      bounded or ast" name
+            end
+          | None ->
           match vrnt, bds with
           | None, None ->
               (* [while V] on a bare loop: the variant rule, with the loop

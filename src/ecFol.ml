@@ -126,6 +126,12 @@ let fop_Ep ty =
 let f_xreal_le f1 f2 = f_app fop_xreal_le [f1; f2] tbool
 let f_is_real f =
   f_app (f_op CI.CI_Xreal.p_is_real [] (tfun txreal tbool)) [f] tbool
+let f_xadd f1 f2 =
+  f_app (f_op CI.CI_Xreal.p_xadd [] (toarrow [txreal; txreal] txreal)) [f1; f2] txreal
+let f_xsmul c f =
+  f_app (f_op CI.CI_Xreal.p_xsmul [] (toarrow [trealp; txreal] txreal)) [c; f] txreal
+let f_monus f1 f2 =
+  f_app (f_op CI.CI_Xreal.p_monus [] (toarrow [txreal; txreal] txreal)) [f1; f2] txreal
 let f_Ep ty d f = f_app (fop_Ep ty) [d; f] txreal
 
 

@@ -2713,16 +2713,16 @@ semrndpos:
 
 while_tac_info:
 | inv=sform
-    { { wh_inv = inv; wh_vrnt = None; wh_bds = None; } }
+    { { wh_inv = inv; wh_vrnt = None; wh_bds = None; wh_rule = None; } }
 
 | inv=sform vrnt=sform
-    { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = None; } }
+    { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = None; wh_rule = None; } }
 
 | inv=sform v=sform beta=sform
-    { { wh_inv = inv; wh_vrnt = Some v; wh_bds = Some (`Mult beta); } }
+    { { wh_inv = inv; wh_vrnt = Some v; wh_bds = Some (`Mult beta); wh_rule = None; } }
 
 | inv=sform vrnt=sform k=sform eps=sform
-    { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = Some (`Bd (k, eps)); } }
+    { { wh_inv = inv; wh_vrnt = Some vrnt; wh_bds = Some (`Bd (k, eps)); wh_rule = None; } }
 
 async_while_tac_info:
 | LBRACKET t1=expr COMMA f1=form RBRACKET
@@ -3066,6 +3066,9 @@ direction:
 
 | SKIP
     { Pskip }
+
+| WHILE s=side? SLASH r=lident info=while_tac_info
+    { Pwhile (s, { info with wh_rule = Some r; }) }
 
 | WHILE s=side? info=while_tac_info
     { Pwhile (s, info) }

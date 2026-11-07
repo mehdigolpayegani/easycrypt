@@ -143,6 +143,7 @@ module CI_Xreal : sig
   val p_xadd         : path
   val p_xmul         : path
   val p_xsmul        : path
+  val p_monus        : path
   val p_xle          : path
   val p_is_real      : path
   val p_is_inf       : path

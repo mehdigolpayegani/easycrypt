@@ -311,6 +311,29 @@ op is_oo (x:xreal) =
   with x = rp _ => false
   with x = oo => true.
 
+(* Truncated subtraction: finite values subtract and clip at 0,
+   monus oo y = oo for finite y, and monus x oo = 0. *)
+op monus (x y : xreal) : xreal =
+  with x = rp a, y = rp b => rp (a%r - b%r)%rp
+  with x = rp _, y = oo   => rp 0%rp
+  with x = oo,   y = rp _ => oo
+  with x = oo,   y = oo   => rp 0%rp.
+
+lemma monusE (a b : real) : 0%r <= a => 0%r <= b => monus a%xr b%xr = (a - b)%xr.
+proof. by move=> ha hb; rewrite /monus /= !of_realKd_ge0. qed.
+
+lemma monus_oo_r (x : xreal) : monus x oo = 0%xr.
+proof. by case: x. qed.
+
+lemma monus_oo_l (a : realp) : monus oo a%xr = oo.
+proof. by []. qed.
+
+lemma is_real_monus (x y : xreal) : is_real x => is_real (monus x y).
+proof. by case: x => // a; case: y. qed.
+
+lemma xr_inj (a b : real) : 0%r <= a => 0%r <= b => a%xr = b%xr => a = b.
+proof. by move=> ha hb h; apply of_reald_pinj => //; smt(). qed.
+
 op xle (x y : xreal) = 
   with x = rp x, y = rp y => x <= y
   with x = rp _, y = oo  => true 

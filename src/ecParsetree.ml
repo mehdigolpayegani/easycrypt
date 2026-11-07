@@ -679,6 +679,7 @@ type while_info = {
   wh_inv  : pformula;
   wh_vrnt : pformula option;
   wh_bds  : [`Bd of pformula pair | `Mult of pformula] option;
+  wh_rule : psymbol option;   (* [while [rule] ...]: the name of the rule *)
 }
 
 (* -------------------------------------------------------------------- *)

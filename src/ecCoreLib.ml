@@ -128,6 +128,7 @@ module CI_Xreal = struct
   let p_xadd    = mk_Rpbar "xadd"
   let p_xmul    = mk_Rpbar "xmul"
   let p_xsmul   = mk_Rpbar "**"
+  let p_monus   = mk_Rpbar "monus"
 
   let p_is_inf  = mk_Rpbar "is_inf"
   let p_is_real = mk_Rpbar "is_real"
