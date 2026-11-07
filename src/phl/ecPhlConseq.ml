@@ -697,13 +697,14 @@ let t_bdHoareS_conseq_nm = gen_conseq_nm t_bdHoareS_notmod t_bdHoareS_conseq
  *         also carries the Jensen TODO.
  *
  * In both chains the middle step is Jensen and the one next to it uses that
- * [fc] is increasing; the outer two are g1 and g2.  Equality ([=]) has no
- * such chain -- Jensen holds in one direction only -- and is rejected.   *)
+ * [fc] is increasing; the outer two are g1 and g2.  An equality ([=]) needs
+ * both chains, so [fc] must be concave and convex, i.e. linear, and g1 and
+ * g2 are equalities.                                                     *)
 
 (* Direction-specific pieces: the shape predicate on [fc], and the two value
    obligations, each taking [fc] applied to the inner side first and then the
    value of the judgment being proved. *)
-let transform_parts (tc : tcenv1) (cmp : hoarecmp) =
+let transform_parts (cmp : hoarecmp) =
   match cmp with
   | FHge ->
       (f_concave_incr,
@@ -714,11 +715,10 @@ let transform_parts (tc : tcenv1) (cmp : hoarecmp) =
        (fun fc_pre  pre  -> f_xreal_le pre fc_pre),
        (fun fc_post post -> f_xreal_le fc_post post))
   | FHeq ->
-      tc_error !!tc
-        "the consequence transform does not support equality ([=]) \
-         judgments: Jensen's inequality holds in one direction only.  Use an \
-         upper bound ([>=]) with a concave function, or a lower bound ([<=]) \
-         with a convex one"
+      (* both Jensen directions, which leaves the linear functions *)
+      ((fun fc -> f_and (f_concave_incr fc) (f_convex_incr fc)),
+       (fun fc_pre  pre  -> f_eq fc_pre pre),
+       (fun fc_post post -> f_eq post fc_post))
 
 let t_ehoareF_transform
     (fc   : ss_inv)
@@ -728,7 +728,7 @@ let t_ehoareF_transform
 =
   let env = FApi.tc1_env tc in
   let hf = tc1_as_ehoareF tc in
-  let f_shape, mk_g1, mk_g2 = transform_parts tc hf.ehf_cmp in
+  let f_shape, mk_g1, mk_g2 = transform_parts hf.ehf_cmp in
   let pre = ss_inv_rebind pre hf.ehf_m in
   let post = ss_inv_rebind post hf.ehf_m in
   let fc = ss_inv_rebind fc hf.ehf_m in
@@ -781,7 +781,7 @@ let t_ehoareS_transform
 =
   let env = FApi.tc1_env tc in
   let hs = tc1_as_ehoareS tc in
-  let f_shape, mk_g1, mk_g2 = transform_parts tc hs.ehs_cmp in
+  let f_shape, mk_g1, mk_g2 = transform_parts hs.ehs_cmp in
   let s = hs.ehs_s in
   let m = fst hs.ehs_m in
   let pre = ss_inv_rebind pre m in
@@ -828,6 +828,16 @@ let t_shape_incr base =
 
 let t_concave_incr = t_shape_incr "concave_incr"
 let t_convex_incr  = t_shape_incr "convex_incr"
+
+(* for an equality, the two shape conditions of a conjunction *)
+let t_concave_convex_incr tc =
+  FApi.t_try
+    (fun tc ->
+       FApi.t_onall
+         (t_solve ~bases:["concave_incr"; "convex_incr"]
+            ~mode:EcMatching.fmrigid ~canfail:true ~depth:20)
+         (FApi.t_seqs [t_intro_s `Fresh; t_split] tc))
+    tc
 
 (* -------------------------------------------------------------------- *)
 (* Consequence with the frame of the variables the program does not write,
@@ -947,7 +957,7 @@ let process_concave
     match cmp with
     | FHge -> t_concave_incr
     | FHle -> t_convex_incr
-    | FHeq -> t_id in
+    | FHeq -> t_concave_convex_incr in
 
   match (snd f1).f_node with
   | FeHoareS hs ->

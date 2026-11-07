@@ -614,18 +614,36 @@ proof.
   by move=> _ /=.
 qed.
 
-(* equality is rejected, on both the F and the S judgment. *)
+(* equality: the function must be concave and convex, hence linear, and
+   the two value obligations are equalities; on both the F and the S
+   judgment. *)
 lemma t_transform_inner_eq :
   ehoare [=] [TC.f : {true | 1%xr} ==> {true | 1%xr}].
 proof. proc; wp; skip => /=; trivial. qed.
 
-lemma t_transform_rejects_eq_F :
+lemma t_transform_eq_F :
   ehoare [=] [TC.f : {true | 2%xr} ==> {true | 2%xr}].
-proof. fail conseq / (fun (y : xreal) => y * 2%xr) t_transform_inner_eq. abort.
+proof.
+  conseq / (fun (y : xreal) => y * 2%xr) t_transform_inner_eq.
+  + by move=> _ /=.
+  by move=> _ /=.
+qed.
 
-lemma t_transform_rejects_eq_S :
+lemma t_transform_eq_S :
   ehoare [=] [TC.f : {true | 2%xr} ==> {true | 2%xr}].
-proof. proc. fail conseq / (fun (y : xreal) => y * 2%xr) t_transform_inner_eq. abort.
+proof.
+  proc.
+  conseq / (fun (y : xreal) => y * 2%xr) (: 1%xr ==> 1%xr).
+  + by move=> _ /=.
+  + by move=> _ /=.
+  by wp; skip => /=; trivial.
+qed.
+
+(* a function that is convex but not concave leaves the shape goal, a
+   conjunction whose first half is false *)
+lemma t_transform_eq_nonlinear :
+  ehoare [=] [TC.f : {true | 4%xr} ==> {true | 4%xr}].
+proof. conseq / (fun (y : xreal) => y * y) t_transform_inner_eq. abort.
 
 (* A strictly convex witness. [fun y => y * y] is not reachable from the [convex_incr]
    hint base, which only derives affine combinations.  The side-condition
