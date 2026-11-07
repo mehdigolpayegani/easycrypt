@@ -19,8 +19,11 @@ module LowInternal = struct
                         t_intros_i [h1;h2];
                         t_apply_hyp h2]
 
-  let t_finalize_ehoare h _h1 _h2 tc =
-    t_apply_hyp h tc
+  (* After [case] and [rcond], the hypothesis [h] is the pre guard, which is
+     the conjunction [P /\ e] of the former guard with the branch condition,
+     and the goal is [e]; [P] may have been simplified away. *)
+  let t_finalize_ehoare h h1 h2 tc =
+    FApi.t_or (t_apply_hyp h) (t_finalize h h1 h2) tc
 
  let t_gen_cond ?(t_finalize=t_finalize) side e tc =
    let hyps  = FApi.tc1_hyps tc in

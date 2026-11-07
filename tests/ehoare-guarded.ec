@@ -881,3 +881,35 @@ proof. fail proc (1%xr). abort.
 lemma t_abs_rejects_eq (A <: AdvT) :
   ehoare [=] [A.f : 1%xr ==> 1%xr].
 proof. fail proc (1%xr). abort.
+
+(* -------------------------------------------------------------------- *)
+(* [if] with a non-trivial pre guard: [case] adds the branch condition to
+   the guard, and the side condition of [rcond] is discharged from the
+   resulting conjunction. *)
+module IfG = {
+  var x : int
+  proc f() : unit = {
+    if (0 < x) { x <- x - 1; } else { x <- x + 1; }
+  }
+}.
+
+lemma t_if_guard_ge :
+  ehoare [>=] [IfG.f : {0 <= IfG.x | 1%xr} ==> {0 <= IfG.x | 1%xr}].
+proof.
+  proc; if.
+  + by wp; skip => &hr /= [hx hpos]; smt().
+  + by wp; skip => &hr /= [hx hneg]; smt().
+qed.
+
+lemma t_if_guard_le :
+  ehoare [<=] [IfG.f : {0 <= IfG.x | 1%xr} ==> {0 <= IfG.x | 1%xr}].
+proof.
+  proc; if.
+  + by wp; skip => &hr /= [hx hpos]; smt().
+  + by wp; skip => &hr /= [hx hneg]; smt().
+qed.
+
+(* trivial guard: the former behaviour is kept *)
+lemma t_if_noguard :
+  ehoare [IfG.f : 1%xr ==> 1%xr].
+proof. by proc; if; auto. qed.
