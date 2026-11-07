@@ -8,9 +8,7 @@
    probability that the minimum cut is spared) is only known to be at least
    1 - 2/m.
    - karger_success_c: [<=] judgment for [contract], scaled by a constant c in
-     [0, 1]: c + (1 - c) * 2/(n(n-1)) <= E[c + (1 - c) [res]]; the condition
-     on c is part of the pre-condition, where a caller checks it on the
-     current state.  Variant rule
+     [0, 1]: c + (1 - c) * 2/(n(n-1)) <= E[c + (1 - c) [res]].  Variant rule
      ([while /variant], prefix form) with invariant
      {2 <= m | c + (1 - c) [ok] 2/(m(m-1))}: the coin (Ep_dbiased) gives the
      factor q m >= (m-2)/m, and 2/(m(m-1)) = (m-2)/m * 2/((m-1)(m-2)).
@@ -21,8 +19,10 @@
      with invariant {0 <= i <= r | [found] + [!found] (1 - (1 - p)^(r-i))};
      the body calls [contract] with the [<=] call rule, using
      karger_success_c for c = 1 if a cut is already found, and
-     c = 1 - (1 - p)^(r-i-1) otherwise (values named by exlim); the call rule
-     carries the frame of [i] and [found]. *)
+     c = 1 - (1 - p)^(r-i-1) otherwise (values named by exlim; the range of
+     i, which keeps c in [0, 1], is recovered by a case split whose impossible
+     branch is closed by exfalso); the call rule carries the frame of [i] and
+     [found]. *)
 require import AllCore Int Real RealExp Xreal Distr DBool StdOrder.
 import RealOrder Biased.
 
@@ -58,19 +58,18 @@ module Karger = {
 op pk (m : int) = 2%r / (m%r * (m - 1)%r).
 
 lemma karger_success_c (n : int) (c : real) :
-  2 <= n =>
+  2 <= n => 0%r <= c <= 1%r =>
   ehoare [<=] [Karger.contract :
-    {arg = n /\ 0%r <= c <= 1%r | (c + (1%r - c) * pk n)%xr} ==>
+    {arg = n | (c + (1%r - c) * pk n)%xr} ==>
     {true | (c + (1%r - c) * b2r res)%xr}].
 proof.
-move=> hn; proc.
-while /variant ((2 <= m /\ 0%r <= c <= 1%r),
-                (c + (1%r - c) * (b2r ok * pk m))%xr) (m - 2).
+move=> hn hc; proc.
+while /variant ((2 <= m), (c + (1%r - c) * (b2r ok * pk m))%xr) (m - 2).
 (* exit: m = 2, and 2/(2 * 1) = 1 *)
-+ move=> &hr [[h1 _] h2]; have -> : m{hr} = 2 by smt().
++ move=> &hr [h1 h2]; have -> : m{hr} = 2 by smt().
   by rewrite /pk.
 (* body: the coin spares the cut with probability q m >= (m-2)/m *)
-+ move=> k; wp; skip => &hr /= [[[h1 hc] h2] hk].
++ move=> k; wp; skip => &hr /= [[h1 h2] hk].
   split; 1: smt().
   rewrite Ep_dbiased; 1: smt(q_bnd).
   rewrite /=.
@@ -97,16 +96,17 @@ while /variant ((2 <= m /\ 0%r <= c <= 1%r),
 (* the variant is non-negative inside the loop *)
 + smt().
 (* prefix: m = n and ok = true *)
-by wp; skip => &hr /= [-> hc].
+by wp; skip => &hr /= ->.
 qed.
 
 lemma karger_success (n : int) : 2 <= n =>
   ehoare [<=] [Karger.contract :
     {arg = n | (2%r / (n%r * (n - 1)%r))%xr} ==> {true | res%xr}].
 proof.
-move=> hn; conseq (karger_success_c n 0%r hn).
+move=> hn; conseq (karger_success_c n 0%r hn _).
 + by move=> &hr ->; rewrite /pk.
-+ by move=> &hr _ [].
++ by move=> &hr _ result /=; case: result.
+by [].
 qed.
 
 lemma pr_karger (n : int) &m :
@@ -132,18 +132,22 @@ while /variant ((0 <= i <= r /\ n = n0 /\ r = r0),
   by rewrite RField.expr0; case: (found{hr}).
 (* body: one more run of [contract]; c = 1 when a cut is already found *)
 + move=> k; wp; exlim found, i => f0 i0.
+  (* the loop runs only while i < r, so the exponent is non-negative *)
+  have hcase : 0 <= i0 < r0 \/ !(0 <= i0 < r0) by smt().
+  elim hcase => hi0r; last by exfalso => &hr /#.
+  have hx : 0%r <= (1%r - pk n0) ^ (r0 - (i0 + 1)) <= 1%r.
+  + by split; [apply expr_ge0 | move=> _; apply exprn_ile1]; smt().
   call (karger_success_c n0
-          (if f0 then 1%r else 1%r - (1%r - pk n0) ^ (r0 - (i0 + 1))) hn).
+          (if f0 then 1%r else 1%r - (1%r - pk n0) ^ (r0 - (i0 + 1))) hn _).
+  + by case: f0 => /=; smt().
   skip => &hr [[<- <-] [[[[hi0 _] [-> ->]] hlt] hk]] /=.
   (* 1 - (1 - p)^(e+1) = c + (1 - c) p with c = 1 - (1 - p)^e *)
   have -> : r0 - i0 = r0 - (i0 + 1) + 1 by ring.
   rewrite RField.exprS 1:/#.
-  have hx : 0%r <= (1%r - pk n0) ^ (r0 - (i0 + 1)) <= 1%r.
-  + by split; [apply expr_ge0 | move=> _; apply exprn_ile1]; smt().
   move: ((1%r - pk n0) ^ (r0 - (i0 + 1))) hx => x hx.
   case: f0 => /= _; 1: smt().
-  split; 1: (split; 1: smt()).
-  + move=> _ b; split; 1: smt().
+  split.
+  + move=> b; split; 1: smt().
     case: b => //=.
     by have -> : 1%r - x + (1%r - (1%r - x)) = 1%r by ring.
   have -> : 1%r - x + (1%r - (1%r - x)) * pk n0 = 1%r - (1%r - pk n0) * x by ring.

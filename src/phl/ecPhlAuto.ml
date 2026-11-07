@@ -16,11 +16,19 @@ let tc_noauto_error pf ?loc () =
 let t_exfalso_r tc =
   let pre = tc1_get_pre tc in
   let post = tc1_get_post tc in
+  (* an ehoare pre-condition is a pair: falsify its guard, keep its value *)
+  let pre_false =
+    match (FApi.tc1_goal tc).f_node with
+    | FeHoareF hf ->
+        map_inv1 (fun _ -> f_tuple [f_false; (ehf_pr_val hf).inv]) pre
+    | FeHoareS hs ->
+        map_inv1 (fun _ -> f_tuple [f_false; (ehs_pr_val hs).inv]) pre
+    | _ -> map_inv1 (fun _ -> f_false) pre in
 
   FApi.t_or
     EcPhlTAuto.t_core_exfalso
     (FApi.t_seqsub
-       (EcPhlConseq.t_conseq (map_inv1 (fun _ -> f_false) pre) post)
+       (EcPhlConseq.t_conseq pre_false post)
        [t_id; t_trivial; EcPhlTAuto.t_core_exfalso])
     tc
 

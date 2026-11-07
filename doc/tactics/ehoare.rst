@@ -54,6 +54,10 @@ The tactics ``skip``, ``wp``, ``rnd``, ``seq``, ``if``, ``case``, ``rcond``,
 ``x <$ d`` turns the value side into an expected value ``Ep d (fun x => g)``
 and the guard side into a universal condition on the support of ``d``.
 
+The ``exfalso`` tactic reads the guard of the pre-condition: a judgment whose
+guard is ``false`` holds, and ``exfalso`` reduces any judgment to the proof
+that its guard is contradictory.
+
 The consequence rule ``conseq (_: {P' | e'} ==> {Q' | g'})`` produces, in the
 direction of the goal, the obligations on the pre (``P => P'`` and ``e cmp e'``)
 and on the post (``Q' => Q`` and ``g' cmp g``). By default the post

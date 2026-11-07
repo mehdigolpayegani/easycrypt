@@ -47,10 +47,15 @@ let t_ehoare_zero_r tc =
 let t_ehoare_zero = FApi.t_low0 "hoare-zero" t_ehoare_zero_r
 
 (* -------------------------------------------------------------------- *)
+(* for an ehoare goal, the pre-condition is its boolean guard *)
 let t_core_exfalso_r tc =
-  let pre   = tc1_get_pre tc in
-    if not (f_equal (inv_of_inv pre) f_false) then
-      tc_error !!tc "pre-condition is not `false'";
-    FApi.xmutate1 tc `ExFalso []
+  let pre_is_false =
+    match (FApi.tc1_goal tc).f_node with
+    | FeHoareF hf -> f_equal (ehf_prb hf).inv f_false
+    | FeHoareS hs -> f_equal (ehs_prb hs).inv f_false
+    | _ -> f_equal (inv_of_inv (tc1_get_pre tc)) f_false in
+  if not pre_is_false then
+    tc_error !!tc "pre-condition is not `false'";
+  FApi.xmutate1 tc `ExFalso []
 
 let t_core_exfalso = FApi.t_low0 "core-exfalso" t_core_exfalso_r

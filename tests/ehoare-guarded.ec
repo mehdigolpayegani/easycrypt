@@ -1361,3 +1361,14 @@ proof. by proc; split; auto => /> /#. qed.
 lemma t_split_rejects_bound :
   ehoare [<=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
 proof. fail split. abort.
+
+(* -------------------------------------------------------------------- *)
+(* exfalso reads the guard of an ehoare pre-condition: a false guard
+   closes the goal, and a contradictory one is reduced to it. *)
+lemma t_exfalso_guard :
+  ehoare [<=] [CF.f : {false | 0%xr} ==> {false | 1%xr}].
+proof. by exfalso. qed.
+
+lemma t_exfalso_contradiction :
+  ehoare [=] [CF.f : {CF.x < 0 /\ 0 < CF.x | 5%xr} ==> {true | 0%xr}].
+proof. by exfalso => &hr /#. qed.
