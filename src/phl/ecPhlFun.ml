@@ -171,17 +171,69 @@ module FunAbsLow = struct
     (inv, inv, sg)
 
   (* ------------------------------------------------------------------ *)
-  (* [inv] is a value, or a guarded pair [(P, f)]: the oracles then have
-     to preserve [P] as well, and neither side may read the globals of the
-     abstract procedure. *)
-  let ehoareF_abs_spec _pf env f (inv: ss_inv) =
+  (* eHoare invariant rules for an abstract procedure. [inv] is a value or
+     a guarded pair [(P, f)]; neither side may read the globals of the
+     procedure, so the invariant is out of its reach and only the oracles
+     can change it.
+
+     - [>=] (rule Adv): every oracle preserves the invariant,
+         {P | f} >= o {P | f}.
+     - [<=] with f = 1 (rule Adv-Lossless): the losslessness hypothesis on
+       the procedure, as for phoare, and {P | 1} <= o {P | 1} for every
+       oracle.
+     - [<=] and [=] with a budget (q, K) (rule Adv-Budget): for every oracle
+         forall j v, {P /\ q = j /\ f = v%xr | f} <> o
+                     {P /\ j <= q /\ (j < q \/ f = v%xr) | f},
+       the termination {P | 1} <= A {P | 1}, and P => q <= K, P => is_real f.
+       [q] reads globals the procedure cannot write and [K] no program
+       variable at all, so that K - q bounds the number of oracle calls
+       that still change the value of the invariant. *)
+  let ehoareF_abs_spec pf env hyps f (cmp : hoarecmp) ?budget (inv : ss_inv) =
     let (top, _, oi, _) = EcLowPhlGoal.abstract_info env f in
     let fv = PV.fv env inv.m inv.inv in
     PV.check_depend env fv top;
     let g, v = ehoare_pair_split inv in
-    let ospec o = f_eHoareF ~prb:g.inv ~pob:g.inv v o v in
-    let sg = List.map ospec (OI.allowed oi) in
-    (inv, inv, sg)
+    let m = inv.m in
+    let one = { m; inv = f_r2xr f_r1 } in
+    let ospec ?(cmp = cmp) ?(pre = g) ?(post = g) ?(v = v) o =
+      f_eHoareF ~prb:pre.inv ~pob:post.inv ~cmp v o v in
+    let oracles = OI.allowed oi in
+    match cmp, budget with
+    | FHge, None ->
+        (inv, inv, List.map (fun o -> ospec o) oracles)
+    | FHge, Some _ ->
+        tc_error pf
+          "an upper bound ([>=]) on an abstract procedure takes no budget"
+    | FHle, None ->
+        if not (EcReduction.is_conv hyps v.inv one.inv) then
+          tc_error pf
+            "a lower bound ([<=]) on an abstract procedure needs a budget, \
+             proc (P, f) q K, unless its value is 1%%xr (termination)";
+        (inv, inv,
+         lossless_hyps env top f.x_sub :: List.map (ospec ~v:one) oracles)
+    | FHeq, None ->
+        tc_error pf
+          "an exact bound ([=]) on an abstract procedure needs a budget: \
+           proc (P, f) q K"
+    | (FHle | FHeq), Some (q, k) ->
+        PV.check_depend env (PV.fv env m q) top;
+        if not (PV.is_empty (PV.fv env m k)) then
+          tc_error pf
+            "the bound of the budget must not depend on program variables";
+        let j  = EcIdent.create "j" and vj = EcIdent.create "v" in
+        let fj = f_local j tint and fv = f_r2xr (f_local vj treal) in
+        let pre  = { m; inv = f_ands [g.inv; f_eq q fj; f_eq v.inv fv] } in
+        let post = { m; inv = f_ands [g.inv; f_int_le fj q;
+                                      f_or (f_int_lt fj q) (f_eq v.inv fv)] } in
+        let ospec o =
+          f_forall [(j, GTty tint); (vj, GTty treal)] (ospec ~pre ~post o) in
+        let ast = f_eHoareF ~prb:g.inv ~pob:g.inv ~cmp:FHle one f one in
+        let mpr, _ = EcEnv.Fun.hoareF_memenv m f env in
+        let mem_prop body =
+          EcSubst.f_forall_mems_ss_inv mpr { m; inv = f_imp g.inv body } in
+        let bound  = mem_prop (f_int_le q k) in
+        let finite = mem_prop (f_is_real v.inv) in
+        (inv, inv, List.map ospec oracles @ [ast; bound; finite])
 
   (* ------------------------------------------------------------------ *)
   let bdhoareF_abs_spec pf env f inv =
@@ -260,21 +312,18 @@ let t_hoareF_abs_r inv tc =
   let tactic tc = FApi.xmutate1 tc `FunAbs sg in
   FApi.t_last tactic (EcPhlConseq.t_hoareF_conseq pre (POE.lift post) tc)
 
-let t_ehoareF_abs_r inv tc =
-  let env = FApi.tc1_env tc in
+let t_ehoareF_abs_r ?budget inv tc =
+  let env, hyps, _ = FApi.tc1_eflat tc in
   let hf = tc1_as_ehoareF tc in
-  (* The invariant rule bounds an abstract procedure from above only: the
-     procedure may diverge, and a lower bound needs a termination argument
-     together with a bound on the number of oracle calls that change the
-     invariant. *)
-  if hf.ehf_cmp <> FHge then
-    tc_error !!tc
-      "the invariant rule for abstract procedures supports only \
-       upper-bound ([>=]) ehoare judgments";
-  let pre, post, sg = FunAbsLow.ehoareF_abs_spec !!tc env hf.ehf_f inv in
+  let pre, post, sg =
+    FunAbsLow.ehoareF_abs_spec !!tc env hyps hf.ehf_f hf.ehf_cmp ?budget inv in
+  (* the two consequence goals are usually trivial: close them when they are *)
+  let t_conseq tc =
+    FApi.t_firsts (FApi.t_try (EcLowGoal.t_close EcLowGoal.t_trivial)) 2
+      (EcPhlConseq.t_ehoareF_conseq pre post tc) in
 
   let tactic tc = FApi.xmutate1 tc `FunAbs sg in
-  FApi.t_last tactic (EcPhlConseq.t_ehoareF_conseq pre post tc)
+  FApi.t_last tactic (t_conseq tc)
 
 (* ------------------------------------------------------------------ *)
 let t_bdhoareF_abs_ge_r inv tc =
@@ -317,7 +366,8 @@ let t_equivF_abs_r inv tc =
 
 (* -------------------------------------------------------------------- *)
 let t_hoareF_abs   = FApi.t_low1 "hoare-fun-abs"   t_hoareF_abs_r
-let t_ehoareF_abs  = FApi.t_low1 "ehoare-fun-abs"  t_ehoareF_abs_r
+let t_ehoareF_abs ?budget inv =
+  FApi.t_low1 "ehoare-fun-abs" (t_ehoareF_abs_r ?budget) inv
 let t_bdhoareF_abs = FApi.t_low1 "bdhoare-fun-abs" t_bdhoareF_abs_r
 let t_equivF_abs   = FApi.t_low1 "equiv-fun-abs"   t_equivF_abs_r
 
@@ -642,9 +692,34 @@ let process_fun_upto_info (bad, p, q) tc =
     ({inv=bad;m}, {inv=p;ml;mr}, {inv=q;ml;mr})
 
 (* -------------------------------------------------------------------- *)
-let process_fun_upto info g =
-  let (bad, p, q) = process_fun_upto_info info g in
-    t_equivF_abs_upto bad p q g
+(* An eHoare invariant for an abstract procedure: a value, or a guarded
+   pair [(P, f)]. *)
+let process_ehoare_abs_inv pe env' inv =
+  match EcLocation.unloc inv with
+  | PFtuple [pg; pv] ->
+      let g = TTC.pf_process_form pe env' tbool pg in
+      let v = TTC.pf_process_xreal pe env' pv in
+      f_tuple [g; v]
+  | _ -> TTC.pf_process_xreal pe env' inv
+
+(* [proc inv q K] on an eHoare goal: the invariant, the budget and its
+   bound (rule Adv-Budget); on an equiv goal, [proc bad I I'] (up to bad). *)
+let process_fun_upto ((inv, p, q) as info) tc =
+  match (FApi.tc1_goal tc).f_node with
+  | FeHoareF _ ->
+      let hyps = FApi.tc1_hyps tc in
+      let m = EcIdent.create "&hr" in
+      let env' = LDecl.inv_memenv1 m hyps in
+      let inv = process_ehoare_abs_inv !!tc env' inv in
+      let k =
+        match q with
+        | Some k -> TTC.pf_process_form !!tc env' tint k
+        | None   -> tc_error !!tc "proc (P, f) q K: the bound K is missing" in
+      let q = TTC.pf_process_form !!tc env' tint p in
+      t_ehoareF_abs ~budget:(q, k) {inv; m} tc
+  | _ ->
+      let (bad, p, q) = process_fun_upto_info info tc in
+      t_equivF_abs_upto bad p q tc
 
 (* -------------------------------------------------------------------- *)
 let process_fun_abs inv tc =
@@ -659,13 +734,7 @@ let process_fun_abs inv tc =
     let hyps = FApi.tc1_hyps tc in
     let m = EcIdent.create "&hr" in
     let env' = LDecl.inv_memenv1 m hyps in
-    let inv  =
-      match EcLocation.unloc inv with
-      | PFtuple [pg; pv] ->
-          let g = TTC.pf_process_form !!tc env' tbool pg in
-          let v = TTC.pf_process_xreal !!tc env' pv in
-          f_tuple [g; v]
-      | _ -> TTC.pf_process_xreal !!tc env' inv in
+    let inv  = process_ehoare_abs_inv !!tc env' inv in
     t_ehoareF_abs {inv;m} tc
 
   and t_bdhoare tc =

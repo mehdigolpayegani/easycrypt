@@ -124,6 +124,8 @@ let fop_Ep ty =
   f_op CI.CI_Xreal.p_Ep [ty] (toarrow [tdistr ty; toarrow [ty] txreal] txreal)
 
 let f_xreal_le f1 f2 = f_app fop_xreal_le [f1; f2] tbool
+let f_is_real f =
+  f_app (f_op CI.CI_Xreal.p_is_real [] (tfun txreal tbool)) [f] tbool
 let f_Ep ty d f = f_app (fop_Ep ty) [d; f] txreal
 
 

@@ -815,9 +815,15 @@ proof.
 abort.
 
 (* -------------------------------------------------------------------- *)
-(* The invariant rule for abstract procedures bounds from above only: an
-   abstract procedure may diverge, so [proc inv] is refused on [<=] and [=]
-   goals.  Without the check, [proc (1%xr)] would establish that every
+(* The invariant rules for abstract procedures.  [proc (P, f)] on a [>=]
+   goal is the rule Adv: every oracle preserves the invariant.  On a [<=]
+   goal whose value is [1%xr] it is the rule Adv-Lossless: the usual
+   losslessness hypothesis on the procedure, and the oracles terminate
+   from [P].  Any other lower bound, and every exact bound, needs a budget
+   [proc (P, f) q K] (rule Adv-Budget): the oracles may change the value of
+   the invariant only while raising the budget [q], which [P] bounds by
+   [K]; [q] reads globals the procedure cannot write, and [K] no program
+   variable.  Without the budget, [proc (2%xr)] would establish that every
    adversary terminates with probability 1. *)
 module type AdvT = { proc f() : unit }.
 
@@ -825,13 +831,61 @@ lemma t_abs_upper (A <: AdvT) :
   ehoare [>=] [A.f : 1%xr ==> 1%xr].
 proof. by proc (1%xr). qed.
 
+lemma t_abs_lower_one (A <: AdvT) :
+  islossless A.f => ehoare [<=] [A.f : 1%xr ==> 1%xr].
+proof. by move=> A_ll; proc (1%xr). qed.
+
 lemma t_abs_rejects_lower (A <: AdvT) :
-  ehoare [<=] [A.f : 1%xr ==> 1%xr].
-proof. fail proc (1%xr). abort.
+  ehoare [<=] [A.f : 2%xr ==> 2%xr].
+proof. fail proc (2%xr). abort.
 
 lemma t_abs_rejects_eq (A <: AdvT) :
   ehoare [=] [A.f : 1%xr ==> 1%xr].
 proof. fail proc (1%xr). abort.
+
+lemma t_abs_rejects_budget_upper (A <: AdvT) :
+  ehoare [>=] [A.f : 1%xr ==> 1%xr].
+proof. fail proc (1%xr) 0 0. abort.
+
+module type OrT = { proc o () : unit }.
+module type AdvO (O : OrT) = { proc f () : unit }.
+
+module Ctr : OrT = {
+  var c : int
+  proc o () : unit = { if (c < 3) c <- c + 1; }
+}.
+
+lemma t_abs_budget_le (A <: AdvO{-Ctr}) :
+  (forall (O <: OrT{-A}), islossless O.o => islossless A(O).f) =>
+  ehoare [<=] [A(Ctr).f : {Ctr.c <= 3 | 1%xr} ==> {Ctr.c <= 3 | 1%xr}].
+proof.
+move=> A_ll.
+proc (Ctr.c <= 3, 1%xr) Ctr.c 3.
++ by move=> j v; proc; wp; skip => &hr /> *; case: (Ctr.c{hr} < 3) => //= /#.
++ proc (Ctr.c <= 3, 1%xr).
+  + by move=> O O_ll; apply (A_ll O).
+  by proc; wp; skip => &hr /> *; case: (Ctr.c{hr} < 3) => //= /#.
++ by move=> &hr.
+by move=> &hr _; rewrite /is_real.
+qed.
+
+lemma t_abs_budget_eq (A <: AdvO{-Ctr}) :
+  (forall (O <: OrT{-A}), islossless O.o => islossless A(O).f) =>
+  ehoare [=] [A(Ctr).f : {Ctr.c <= 3 | 1%xr} ==> {Ctr.c <= 3 | 1%xr}].
+proof.
+move=> A_ll.
+proc (Ctr.c <= 3, 1%xr) Ctr.c 3.
++ by move=> j v; proc; wp; skip => &hr /> *; case: (Ctr.c{hr} < 3) => //= /#.
++ proc (Ctr.c <= 3, 1%xr).
+  + by move=> O O_ll; apply (A_ll O).
+  by proc; wp; skip => &hr /> *; case: (Ctr.c{hr} < 3) => //= /#.
++ by move=> &hr.
+by move=> &hr _; rewrite /is_real.
+qed.
+
+lemma t_abs_rejects_bound_pv (A <: AdvO{-Ctr}) :
+  ehoare [<=] [A(Ctr).f : {Ctr.c <= 3 | 1%xr} ==> {Ctr.c <= 3 | 1%xr}].
+proof. fail proc (Ctr.c <= 3, 1%xr) Ctr.c Ctr.c. abort.
 
 (* -------------------------------------------------------------------- *)
 (* [if] with a non-trivial pre guard: [case] adds the branch condition to
