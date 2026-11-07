@@ -111,7 +111,6 @@ lemma pr_bad &m (A<:Adv{-O}) : Pr[Main(A).main() @ &m : O.bad] <= eps * Q%r * (i
     call (: (O.bad => Q <= O.c, if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr)
             ==> O.bad%xr).
     + proc (O.bad => Q <= O.c, if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr).
-      + by move=> &hr />.
       + move=> &hr hb /=; case: (Q <= O.c{hr}) => //= hlt.
         have -> /=: O.bad{hr} = false by smt().
         smt().
