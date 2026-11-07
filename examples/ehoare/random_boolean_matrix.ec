@@ -121,8 +121,7 @@ while ((0 <= i <= n
    `|`  (2%r ^ ((-(n - i) * m)%r))%xr
        * (row_eq_upto i m a a0)%xr).
 (* !cond => inv => pos_f <= inv_f *)
-+ move=> &hr.
-  apply xle_cxr_r => ?.
++ move=> &hr ?.
   apply xle_cxr_r => ?.
   have ->: n{hr} - i{hr} = 0 by smt().
   rewrite Ring.IntID.mul0r Ring.IntID.oppr0 rpow0 mul1m_simpl.
@@ -137,15 +136,15 @@ while ((0 <= i <= n
           `|` (2%r ^ ((-((n - i) * m - j))%r))%xr
             * (row_eq_upto i m a a0 /\ cell_eq_upto i j m a a0)%xr).
   (* !cond => inv => pos_f <= inv_f *)
-  + move=> &hr />.
+  + move=> &hr /> ?.
     rewrite xle_cxr_r => ?.
     rewrite xle_cxr_l 1:/#.
     rewrite (_: - _ * m{hr} = - ((n{hr} - i{hr}) * m{hr} - j{hr})) //= 1:/#.
     rewrite (_: j{hr} = m{hr}) 1:/#.
     by rewrite -row_eq_upto_increase 1:/# ler_eqVlt; left; reflexivity.
   (* {cond /\ inv | inv_f} c {inv | inv_f} *)
-  + wp; skip => /> &hr.
-    rewrite xle_cxr_r => [#] 5? Hsize ?.
+  + wp; skip => /> &hr ?.
+    apply xle_cxr_r => [#] 4? Hsize ?.
     rewrite Ep_dbiased /= 1:/#.
     have -> /=: 0 <= i{hr} < n{hr} by smt().
     have -> /=: 0 <= j{hr} + 1 <= m{hr} by smt().
@@ -183,8 +182,8 @@ while ((0 <= i <= n
       rewrite (mulrC (b2r _) (2%r ^ - 1%r)).
       by rewrite mulrA -rpowD // /#.
   (* pre => inv *)
-  + wp; skip => &hr />.
-    rewrite xle_cxr_r => [#] ??????.
+  + wp; skip => &hr /> ?.
+    apply xle_cxr_r => [#] ?????.
     rewrite xle_cxr_l 1:/#.
     by have-> //: cell_eq_upto i{hr} 0 m{hr} a{hr} a0 by smt().
 auto => /> &hr.

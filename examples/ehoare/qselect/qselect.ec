@@ -192,35 +192,38 @@ proof.
   rewrite (partition_on_sindex _ _ _ _ _ hpart) // /#. 
 qed.
 
-ehoare eh_p_partition f t_ lo_ hi_: QS.p_partition :
-  (lo = lo_ /\ hi = hi_ /\ t = t_ /\ uniq_on t lo hi /\  0 <= lo_ <= hi_ < size t) `|` 
-Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt)) ==> 
-   (lo_ <= res.`2 <= hi_ /\ uniq_on res.`1 lo_ hi_ /\ size res.`1 = size t_) `|` f res.`2 c.
+ehoare eh_p_partition f t_ c_ lo_ hi_: QS.p_partition :
+  {c = c_ /\ lo = lo_ /\ hi = hi_ /\ t = t_ /\ uniq_on t lo hi /\ 0 <= lo_ <= hi_ < size t |
+   Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
+  {c = c_ + (hi_ - lo_) * clt /\ lo_ <= res.`2 <= hi_ /\ uniq_on res.`1 lo_ hi_ /\ size res.`1 = size t_ |
+   f res.`2 c}.
 proof.
-  conseq (p_partitionE t_ lo_ hi_) 
-    (_:  Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt)) ==> 
-         f res c) => />.
-  + by move=> &1; exists c{1} (lo, hi){1}; apply trans_help => />.
+  conseq (p_partitionE t_ lo_ hi_)
+    (_: {c = c_ /\ lo = lo_ /\ hi = hi_ | Ep [lo .. hi] (fun p => f p (c + (hi - lo)*clt))} ==>
+        {c = c_ + (hi_ - lo_) * clt | f res c}) => />.
+  + by move=> &1 *; exists c_ (lo, hi){1}.
   proc; auto.
 qed.
 
-ehoare eh_qselect : QS.qselect : (0 <= pos < size t /\ uniq_on t 0 (size t - 1)) `|` (4 * (size t - 1))%xr ==> c%xr.
+ehoare eh_qselect : QS.qselect :
+  {0 <= pos < size t /\ uniq_on t 0 (size t - 1) | (4 * (size t - 1))%xr} ==> {true | c%xr}.
 proof.
   proc.
-  while ((0 <= lo <= pos <= hi < size t /\ lo <= pos <= hi /\ uniq_on t lo hi /\ 0 <= c) `|` 
-          c%xr + (4 * (hi - lo))%xr).
-  + by move=> &hr /=; apply xle_cxr_r => /> * /#.
-  + wp; exlim t, lo, hi, pos => t_ lo_ hi_ pos_.
-    call /(fun x => (lo = lo_ /\ hi = hi_ /\ pos = pos_ /\ 0 <= lo <= pos <= hi < size t_ ) `|` x) 
+  while ((0 <= lo <= pos <= hi < size t /\ uniq_on t lo hi /\ 0 <= c), c%xr + (4 * (hi - lo))%xr).
+  + by move=> &hr /> *; smt().
+  + wp; exlim t, c, lo, hi, pos => t_ c_ lo_ hi_ pos_.
+    call /(fun x => x)
       (eh_p_partition (fun p c => (0 <= c) `|`
         if p = pos_ then c%xr
         else if p < pos_ then c%xr + (4 * (hi_ - (p+1)))%xr
         else  c%xr + (4 * ((p-1) - lo_))%xr)
-       t_ lo_ hi_).
-    + by move=> &hr /=; apply xle_cxr_r => /> *; smt(uniq_on_sub).
-    skip => &hr /=; apply xle_cxr => />.
-    move: (pos{hr}) (lo{hr}) (hi{hr}) (t{hr}) (c{hr}) => {&hr lo_ hi_ pos_} pos lo hi t c *.
-    split; 1: smt().
+       t_ c_ lo_ hi_).
+    skip => &hr /= [#] 5!-> [#] hlo hpos hhi huniq hc hlt hlohi; split.
+    + split; 1: smt().
+      move=> _ [t0 p0] c0 /= [#] -> hp0lo hp0hi hu hsz; split; 1: smt(uniq_on_sub).
+      by apply xle_cxr_r.
+    move: (pos{hr}) (lo{hr}) (hi{hr}) (t{hr}) (c{hr}) hlo hpos hhi huniq hc hlt hlohi
+      => {&hr lo_ hi_ pos_ t_ c_} pos lo hi t c *.
     rewrite Ep_cxr; apply xle_cxr_l; 1: by move=> x /supp_dinter /= /#.
     rewrite -(eq_Ep _ (
          (fun (p0 : int) =>
@@ -261,5 +264,5 @@ proof.
     pose i := pos - lo; pose j := hi - pos; pose k := (_ - _)%Int.
     have -> : k = (i - j) ^ 2 + 5 * i + 5 * j by rewrite /k /i /j; ring.
     by have /# := IntOrder.ge0_sqr (i - j).
-  by wp; skip => &hr /=; apply xle_cxr => /#. 
+  by wp; skip => &hr /> *; smt().
 qed.

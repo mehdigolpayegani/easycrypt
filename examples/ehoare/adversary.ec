@@ -68,15 +68,19 @@ ehoare extend_log_size : O.extend_log : (inv p)%xr + (size O.log)%xr ==> (size O
 proof.
   proc.
   while ((b2r (!t) / p)%xr + (size O.log)%xr).
-  + move => &hr; apply xle_cxr_r => |>.
-  + wp; skip; move => &hr; move: (t{hr}) (O.log{hr}) => {&hr} t log; apply xle_cxr_r => ntest.
-    rewrite ntest => /=.
+  + by move => &hr /= -> /=.
+  + wp; skip => &hr /= -> /=.
     rewrite (eq_Ep _ _
-       ((fun r => (inv p)%xr * (! test r)%xr) + (fun r => (1 + size log)%xr))).
-    + move => x xx /=. rewrite of_realM; 1,2:smt(of_realM invr_ge0 ge0_mu). smt().
+       ((fun r => (inv p)%xr * (! test r)%xr) + (fun r => (1 + size O.log{hr})%xr))).
+    + move => x xx /=; congr.
+      rewrite -of_realI -of_realM 1:invr_ge0 1:ge0_mu 1:b2r_ge0.
+      by congr; rewrite RField.mulrC.
     rewrite EpD EpC EpZ /=; 1: smt(invr_gt0 dr_mu_test of_realdK).
     rewrite Ep_mu mu_not dr_ll /= -/p.
-    rewrite !to_pos_pos; 1,2,3,4:smt(mu_bounded dr_mu_test size_ge0).
+    rewrite !to_pos_pos; 1..3: smt(mu_bounded dr_mu_test size_ge0).
+    have hp := dr_mu_test.
+    have -> : (1%r - p) / p = inv p - 1%r by field; smt().
+    smt().
   by auto.
 qed.
 
@@ -88,15 +92,17 @@ proof.
   wp.
   call /(fun x => (O.bad => Q <= O.c)
           `|` if Q < O.c then O.bad%xr else x * eps%xr + (Q - O.c)%xr * (eps/p)%xr) extend_log_size.
-  + auto => &hr /=.
-    case: (O.c{hr} = Q) => [ -> /= | *].
-    + rewrite Ep_mu (:(fun (a : r) => a \in O.log{hr}) = mem O.log{hr}); 1: by auto.
+  auto => &hr /=; split.
+  + move=> log; case: (O.c{hr} + 1 = Q) => [<- /= | hne].
+    + rewrite Ep_mu (:(fun (a : r) => a \in log) = mem log); 1: by auto.
       rewrite -of_realM /=; smt(mu_mem_le_mu1 size_ge0 eps_ge0 dr_mu1).
-    case: (Q < O.c{hr}); by smt().
-  auto => &hr /=; apply xle_cxr => *; split; 1:smt().
+    by have -> : (Q <= O.c{hr} + 1) = (Q < O.c{hr} + 1) by smt().
+  apply xle_cxr => *; split; 1:smt().
   have -> /=: (Q < O.c{hr} + 1) = (Q <= O.c{hr}) by smt().
   case (Q <= O.c{hr}); 1:smt().
-  by smt(of_realM of_realD dr_mu_test).
+  move=> hlt /=.
+  rewrite !to_pos_pos; 1..6: smt(mu_bounded dr_mu_test size_ge0 eps_ge0 invr_ge0 divr_ge0).
+  smt(dr_mu_test).
 qed.
 
 lemma pr_bad &m (A<:Adv{-O}) : Pr[Main(A).main() @ &m : O.bad] <= eps * Q%r * (inv p).
