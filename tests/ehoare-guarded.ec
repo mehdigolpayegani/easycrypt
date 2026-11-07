@@ -1111,3 +1111,62 @@ proof.
   + by [].
   + by move=> &hr -> /=.
 qed.
+
+(* -------------------------------------------------------------------- *)
+(* The call rule, in the three directions.  The guard of the specification
+   is pushed back through the call as in Hoare logic, so the variables the
+   callee does not write keep their value: the post of the goal mentions
+   [CF.y] though the specification of [CF.f] does not.  The value side of
+   the post is pushed back with the guard, so it only has to hold on the
+   memories the call reaches.  With [call / F] the value side goes through
+   a Jensen step: [F] concave increasing for [>=], convex increasing for
+   [<=], both for [=], which leaves the linear functions. *)
+module CF = {
+  var x, y : int
+  proc f () : unit = { x <- x + 1; }
+  proc g () : unit = { y <- 7; f(); }
+}.
+
+lemma f_ge : ehoare [>=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. by proc; auto => /> /#. qed.
+
+lemma f_le : ehoare [<=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. by proc; auto => /> /#. qed.
+
+lemma f_eq : ehoare [=] [CF.f : {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}].
+proof. by proc; auto => /> /#. qed.
+
+lemma t_call_frame_ge :
+  ehoare [>=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by proc; call f_ge; auto. qed.
+
+lemma t_call_frame_le :
+  ehoare [<=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by proc; call f_le; auto. qed.
+
+lemma t_call_frame_eq :
+  ehoare [=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by proc; call f_eq; auto. qed.
+
+(* the specification must have the direction of the goal *)
+lemma t_call_rejects_direction :
+  ehoare [<=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. proc. fail call f_ge. abort.
+
+lemma t_call_fun_ge :
+  ehoare [>=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * 2%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * 2%xr}].
+proof. by proc; call /(fun z => z * 2%xr) f_ge; auto. qed.
+
+lemma t_call_fun_le :
+  ehoare [<=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * 2%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * 2%xr}].
+proof. by proc; call /(fun z => z * 2%xr) f_le; auto. qed.
+
+lemma t_call_fun_eq :
+  ehoare [=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * 2%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * 2%xr}].
+proof. by proc; call /(fun z => z * 2%xr) f_eq; auto. qed.
+
+(* for [=] a function that is convex but not concave leaves the
+   [concave_incr] shape goal, which is false here *)
+lemma t_call_fun_eq_nonlinear :
+  ehoare [=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * CF.x%xr}].
+proof. proc. call /(fun z => z * z) f_eq. abort.

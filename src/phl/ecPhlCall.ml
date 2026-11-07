@@ -243,84 +243,91 @@ let ehoare_call_pre_post fpre fpost tc =
   hyps, env, hs, s, f, wppre, wppost
 
 
-let t_ehoare_call_core fpre fpost tc =
-  let hyps, env, hs, s, f, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
-  if not (List.is_empty s.s_node) then
-    tc_error !!tc  "ehoare call core rule: only single call statements are accepted";
-  if not (EcReduction.ss_inv_alpha_eq hyps (ehs_po hs) wppost) then
-    (let env = EcEnv.Memory.push_active_ss hs.ehs_m env in
-     let ppe  = EcPrinting.PPEnv.ofenv env in
-     tc_error !!tc "ehoare call core rule: wrong post-condition %a instead %a"
-       (EcPrinting.pp_form ppe) (ehs_po hs).inv (EcPrinting.pp_form ppe) wppost.inv);
+(* eHoare call rule, in the three directions, with an optional function [fc]
+   on the value side:
 
-  if not (EcReduction.ss_inv_alpha_eq hyps (ehs_pr hs) wppre) then
-    (let env = EcEnv.Memory.push_active_ss hs.ehs_m env in
-     let ppe  = EcPrinting.PPEnv.ofenv env in
-     tc_error !!tc "ehoare call core rule: wrong pre-condition %a instead %a"
-       (EcPrinting.pp_form ppe) (ehs_pr hs).inv (EcPrinting.pp_form ppe) wppre.inv);
+     {P_s | f_s} <> g {Q_s | g_s}             (the specification, same direction)
+     shape fc                                  (only when [fc] is given)
+     {P | f} <> s {P_s[e] /\ forall modified, Q_s[res] => Q /\ h <> fc g_s[res]
+                  | fc f_s[e]}
+     -------------------------------------------------------------------------
+     {P | f} <> s; x <@ g(e) {Q | h}
 
-  (* [fpre]/[fpost] are already tuple sides: build raw, carry [ehs_cmp] *)
-  let f_concl =
-    f_eHoareF_r { ehf_m   = fpre.m;
-                  ehf_pr  = ehoare_as_tuple fpre;
-                  ehf_f   = f;
-                  ehf_po  = ehoare_as_tuple fpost;
-                  ehf_cmp = hs.ehs_cmp } [@alert "-priv_pl"] in
-  FApi.xmutate1 tc `HlCall [f_concl]
+   The guard of the specification is pushed back through the call as for
+   Hoare, so that the unmodified variables carry the frame.  The value
+   obligation on the post is pushed back with it: it only has to hold on
+   the states the call reaches.  [h <> fc g_s] reads [h <= fc g_s] for [>=],
+   [fc g_s <= h] for [<=] and [h = fc g_s] for [=].  The shape of [fc] is
+   [concave_incr] for [>=], [convex_incr] for [<=] and both for [=]: by
+   Jensen, E[fc g_s] <= fc(E[g_s]) for a concave [fc] and the converse for a
+   convex one, and [fc] increasing lifts [f_s <> E[g_s]] to
+   [fc f_s <> fc(E[g_s])].  Without [fc] the rule is the plain one. *)
+let string_of_dir = function
+  | FHle -> "[<=]" | FHeq -> "[=]" | FHge -> "[>=]"
 
-
-let t_ehoare_call fpre fpost tc =
-  let _, _, _, _, _, wppre, _ = ehoare_call_pre_post fpre fpost tc in
-  let tcenv =
-    EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last)) wppre tc in
-  let tcenv = FApi.t_swap_goals 0 1 tcenv in
-  FApi.t_sub [t_ehoare_call_core fpre fpost; t_id] tcenv
-
-let t_ehoare_call_concave fc fpre fpost tc =
-  (* [call / fc] uses Jensen for a CONCAVE fc: upper bound only *)
-  if (tc1_as_ehoareS tc).ehs_cmp <> FHge then
-    tc_error !!tc
-      "call with a function argument builds a concave function, so it \
-       supports only upper-bound ([>=]) judgments";
+let t_ehoare_call_frame ?fc cmp fpre fpost tc =
   let hyps, env, hs, _, fn, wppre, wppost = ehoare_call_pre_post fpre fpost tc in
+  if cmp <> hs.ehs_cmp then
+    tc_error !!tc
+      "call: the specification is a %s judgment but the goal is a %s one"
+      (string_of_dir cmp) (string_of_dir hs.ehs_cmp);
   let m = EcMemory.memory hs.ehs_m in
   let call, _ = tc1_last_call tc hs.ehs_s in
-  let fc = ss_inv_rebind fc m in
+  let fc = omap (fun fc -> ss_inv_rebind fc m) fc in
   (* [fc] is read after the call, so it must not depend on what the call writes *)
-  let modi  = s_write env (stmt [i_call call]) in
-  let inter = PV.interdep env (PV.fv env m fc.inv) modi in
-  if not (PV.is_empty inter) then
-    tc_error !!tc "the function should not depend on modified elements: %a"
-      (PV.pp env) inter;
+  fc |> oiter (fun (fc : ss_inv) ->
+    let modi  = s_write env (stmt [i_call call]) in
+    let inter = PV.interdep env (PV.fv env m fc.inv) modi in
+    if not (PV.is_empty inter) then
+      tc_error !!tc "the function should not depend on modified elements: %a"
+        (PV.pp env) inter);
   let fpre_g  = fst (ehoare_pair_split (ss_inv_rebind fpre m)) in
   let fpost_g = fst (ehoare_pair_split (ss_inv_rebind fpost m)) in
   let wpre_v  = snd (ehoare_pair_split wppre) in
   let wpost_v = snd (ehoare_pair_split wppost) in
   let po_g, po_v = ehoare_pair_split (ehs_po hs) in
-  let app x = f_app_simpl fc.inv [x] txreal in
-  (* guard: pushed back through the call as for Hoare, so unmodified
-     variables carry the frame. The value obligation [po_v <= fc wpost_v]
-     is pushed back together with it, so that it only needs to hold on
-     states reached by the call, where the frame is available. *)
+  let app x =
+    match fc with
+    | None    -> x
+    | Some (fc : ss_inv) -> f_app_simpl fc.inv [x] txreal in
   let guard =
-    let po = f_and po_g.inv (f_xreal_le po_v.inv (app wpost_v.inv)) in
+    let fc_post = app wpost_v.inv in
+    let value =
+      if EcReduction.is_alpha_eq hyps fc_post po_v.inv then f_true
+      else f_xreal_cmp cmp fc_post po_v.inv in
     compute_hoare_call_post hyps m
-      (fpre_g.inv, POE.empty fpost_g.inv) call (POE.empty po) in
+      (fpre_g.inv, POE.empty fpost_g.inv) call
+      (POE.empty (f_and_simpl po_g.inv value)) in
   let mid = { m; inv = f_tuple [guard; app wpre_v.inv] } in
-  let mem_prop body = EcSubst.f_forall_mems_ss_inv hs.ehs_m { m; inv = body } in
-  (* value: Jensen with the concave increasing [fc] *)
-  let g0 = mem_prop (f_concave_incr fc.inv) in
+  let shape =
+    match fc with
+    | None -> []
+    | Some (fc : ss_inv) ->
+        let mem_prop body =
+          EcSubst.f_forall_mems_ss_inv hs.ehs_m { m; inv = body } in
+        let concave = mem_prop (f_concave_incr fc.inv) in
+        let convex  = mem_prop (f_convex_incr  fc.inv) in
+        match cmp with
+        | FHge -> [concave]
+        | FHle -> [convex]
+        | FHeq -> [concave; convex] in
   let f_concl =
     f_eHoareF_r { ehf_m   = fpre.m;
                   ehf_pr  = ehoare_as_tuple fpre;
                   ehf_f   = fn;
                   ehf_po  = ehoare_as_tuple fpost;
-                  ehf_cmp = FHge } [@alert "-priv_pl"] in
+                  ehf_cmp = cmp } [@alert "-priv_pl"] in
   let tcenv =
     EcPhlSeq.t_ehoare_seq (GapBefore (EcMatching.Position.cpos1_last)) mid tc in
   let tcenv = FApi.t_swap_goals 0 1 tcenv in
   FApi.t_sub
-    [(fun tc -> FApi.xmutate1 tc `HlCall [g0; f_concl]); t_id] tcenv
+    [(fun tc -> FApi.xmutate1 tc `HlCall (shape @ [f_concl])); t_id] tcenv
+
+let t_ehoare_call cmp fpre fpost tc =
+  t_ehoare_call_frame cmp fpre fpost tc
+
+let t_ehoare_call_concave fc cmp fpre fpost tc =
+  t_ehoare_call_frame ~fc cmp fpre fpost tc
 
 (* -------------------------------------------------------------------- *)
 let bdhoare_call_spec pf fpre fpost f cmp bd opt_bd =
@@ -479,7 +486,7 @@ let t_call side ax tc =
       let (_, f, _), _ = tc1_last_call tc hs.ehs_s in
       if not (EcEnv.NormMp.x_equal env hf.ehf_f f) then
         call_error env tc hf.ehf_f f;
-      t_ehoare_call (ehf_pr hf) (ehf_po hf) tc
+      t_ehoare_call hf.ehf_cmp (ehf_pr hf) (ehf_po hf) tc
 
   | FbdHoareF hf, FbdHoareS hs ->
       let (_, f, _), _ = tc1_last_call tc hs.bhs_s in
@@ -829,14 +836,21 @@ let process_call_concave (fc, info) tc =
       let (_, f, _), _ = tc1_last_call tc hs.ehs_s in
       if not (EcEnv.NormMp.x_equal env hf.ehf_f f) then
         call_error env tc hf.ehf_f f;
-      t_ehoare_call_concave fc (ehf_pr hf) (ehf_po hf) tc
+      t_ehoare_call_concave fc hf.ehf_cmp (ehf_pr hf) (ehf_po hf) tc
     | _, _ -> tc_error !!tc "call: invalid goal shape" in
+
+  (* the shape goals come first, one per Jensen direction used *)
+  let t_shape =
+    match (tc1_as_ehoareS tc).ehs_cmp with
+    | FHge -> [EcPhlConseq.t_concave_incr]
+    | FHle -> [EcPhlConseq.t_convex_incr]
+    | FHeq -> [EcPhlConseq.t_concave_incr; EcPhlConseq.t_convex_incr] in
 
   FApi.t_seqsub
     (t_call ax)
-    [ EcPhlConseq.t_concave_incr;
-      FApi.t_seqs
-        [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
-         !subtactic; t_trivial];
-      t_id]
+    (t_shape @
+     [ FApi.t_seqs
+         [EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt;
+          !subtactic; t_trivial];
+       t_id])
     tc

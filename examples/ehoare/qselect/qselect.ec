@@ -212,7 +212,7 @@ proof.
   while ((0 <= lo <= pos <= hi < size t /\ uniq_on t lo hi /\ 0 <= c), c%xr + (4 * (hi - lo))%xr).
   + by move=> &hr /> *; smt().
   + wp; exlim t, c, lo, hi, pos => t_ c_ lo_ hi_ pos_.
-    call /(fun x => x)
+    call
       (eh_p_partition (fun p c => (0 <= c) `|`
         if p = pos_ then c%xr
         else if p < pos_ then c%xr + (4 * (hi_ - (p+1)))%xr
