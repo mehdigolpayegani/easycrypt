@@ -1066,3 +1066,48 @@ proof.
   + by move=> &hr /=.
   + by move=> &hr _ /=.
 qed.
+
+(* -------------------------------------------------------------------- *)
+(* [byehoare] in the three directions: an upper bound on a probability from
+   a [>=] judgment, a lower bound from a [<=] one, an equality from a [=]
+   one, with guarded sides written as pairs in a cut.  The obligations are
+   the pre-condition on the arguments, the comparison of the pre-expectation
+   with the bound, and, on the final memories satisfying the post-condition,
+   the comparison of the post-expectation with the indicator of the event. *)
+lemma h_upper : ehoare [>=] [R.h : {true | (1%r / 2%r)%xr} ==> {true | res%xr}].
+proof. by proc; wp; skip => &hr /=; rewrite Ep_dbool. qed.
+
+lemma h_lower : ehoare [<=] [R.h : {true | (1%r / 2%r)%xr} ==> {true | res%xr}].
+proof. by proc; wp; skip => &hr /=; rewrite Ep_dbool. qed.
+
+lemma h_exact : ehoare [=] [R.h : {true | (1%r / 2%r)%xr} ==> {true | res%xr}].
+proof. by proc; wp; skip => &hr /=; rewrite Ep_dbool. qed.
+
+(* upper bound on a probability, from a [>=] judgment *)
+lemma pr_upper &m : Pr[R.h() @ &m : res] <= 1%r / 2%r.
+proof. by byehoare h_upper. qed.
+
+(* lower bound on a probability, from a [<=] judgment *)
+lemma pr_lower &m : 1%r / 2%r <= Pr[R.h() @ &m : res].
+proof. by byehoare h_lower. qed.
+
+(* exact probability, from a [=] judgment, in both orientations *)
+lemma pr_exact &m : Pr[R.h() @ &m : res] = 1%r / 2%r.
+proof. by byehoare h_exact. qed.
+
+lemma pr_exact' &m : 1%r / 2%r = Pr[R.h() @ &m : res].
+proof. by byehoare h_exact. qed.
+
+(* the direction of the judgment must match the goal *)
+lemma pr_mismatch &m : 1%r / 2%r <= Pr[R.h() @ &m : res].
+proof. fail byehoare h_upper. abort.
+
+(* a cut with guarded sides, written as pairs: the pre-condition is checked
+   on the arguments, the post-condition is available for the event *)
+lemma pr_guard &m : Pr[M.f(1) @ &m : res = 2] = 1%r.
+proof.
+  byehoare (_: (arg = 1, 1%xr) ==> (res = 2, 1%xr)).
+  + by proc; wp; skip => &hr /= ->.
+  + by [].
+  + by move=> &hr -> /=.
+qed.

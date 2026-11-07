@@ -113,3 +113,14 @@ proof.
   (* prefix *)
   + by wp; skip.
 qed.
+
+(* The probability statements follow by [byehoare], which checks the
+   pre-condition on the argument and relates the post-expectation to the
+   indicator of the event. *)
+lemma pr_conj &m (k : int) :
+  0 <= k => Pr[Conj.run(k) @ &m : res] = p ^ k.
+proof. by move=> hk; byehoare conj_lower. qed.
+
+lemma pr_conj_decay &m (k : int) :
+  0 <= k => Pr[Conj.run(k) @ &m : res] = p ^ k.
+proof. by move=> hk; byehoare conj_decay. qed.

@@ -85,34 +85,57 @@ let t_phoare_deno_r pre post tc =
 
 
 (* -------------------------------------------------------------------- *)
-let t_ehoare_deno_r pre post tc =
+(* The direction of a goal on a probability: [Pr <= bd] is an upper bound,
+   [bd <= Pr] a lower bound, [Pr = bd] and [bd = Pr] equalities. The result
+   is the direction of the ehoare judgment to use, the Pr expression and the
+   bound. *)
+let destr_ehoare_pr_goal pe concl =
+  let error () =
+    tc_error pe "the conclusion is not a suitable Pr expression" in
+  match concl.f_node with
+  | Fapp ({f_node = Fop (op, _)}, [f1; f2])
+      when EcPath.p_equal op EcCoreLib.CI_Real.p_real_le ->
+      if is_pr f1 then (FHge, f1, f2)
+      else if is_pr f2 then (FHle, f2, f1)
+      else error ()
+  | Fapp ({f_node = Fop (op, _)}, [f1; f2])
+      when EcPath.p_equal op EcCoreLib.CI_Bool.p_eq ->
+      if is_pr f1 then (FHeq, f1, f2)
+      else if is_pr f2 then (FHeq, f2, f1)
+      else error ()
+  | _ -> error ()
+
+(* From  ehoare [F : {P | f} ==> {Q | g}]  in the direction of the goal:
+     Pr[F(a) @ m : ev] <= bd   if  P[a] m,  f[a] m <= bd  and  Q => [ev] <= g
+     bd <= Pr[F(a) @ m : ev]   if  P[a] m,  bd <= f[a] m  and  Q => g <= [ev]
+     Pr[F(a) @ m : ev] = bd    if  P[a] m,  f[a] m = bd   and  Q => g = [ev]
+   as the probability is the expectation of the indicator of the event, and
+   Q holds on the outputs. *)
+let t_ehoare_deno_r (pre : ss_inv) (post : ss_inv) tc =
   let m = pre.m in
   assert (m = post.m);
   let env, _, concl = FApi.tc1_eflat tc in
-
-  let f, bd =
-    match concl.f_node with
-    | Fapp ({f_node = Fop (op, _)}, [f; bd])
-        when is_pr f && EcPath.p_equal op EcCoreLib.CI_Real.p_real_le ->
-      (f, bd)
-
-    | _ -> tc_error !!tc "invalid goal shape"
-  in
-
+  let cmp, f, bd = destr_ehoare_pr_goal !!tc concl in
   let pr = destr_pr f in
-  let concl_e = f_eHoareF pre pr.pr_fun post in
+  let pre_g, pre_v = ehoare_pair_split pre in
+  let post_g, post_v = ehoare_pair_split post in
+  let concl_e =
+    f_eHoareF ~prb:pre_g.inv ~pob:post_g.inv ~cmp pre_v pr.pr_fun post_v in
   let _, mpo = EcEnv.Fun.hoareF_memenv m pr.pr_fun env in
-  (* pre <= bd *)
-  (* building the substitution for the pre *)
+  (* the pre-condition holds in the initial memory, with the arguments, and
+     the pre-expectation is related to the bound *)
   let sargs = PVM.add env pv_arg m pr.pr_args PVM.empty in
   let smem = Fsubst.f_bind_mem Fsubst.f_subst_id m pr.pr_mem in
-  let pre = Fsubst.f_subst smem (PVM.subst env sargs pre.inv) in
-  let concl_pr = f_xreal_le pre (f_r2xr bd) in
-
-  (* forall m, ev%r%xr <= post *)
-  let ev = pr.pr_event in
-  let ev = ss_inv_rebind ev m in
-  let concl_po = map_ss_inv2 f_xreal_le (map_ss_inv1 f_b2xr ev) post in
+  let at_init f = Fsubst.f_subst smem (PVM.subst env sargs f) in
+  let concl_pr =
+    f_and_simpl (at_init pre_g.inv)
+      (f_xreal_cmp cmp (f_r2xr bd) (at_init pre_v.inv)) in
+  (* on the final memories satisfying the post-condition, the
+     post-expectation is related to the indicator of the event *)
+  let ev = ss_inv_rebind pr.pr_event m in
+  let concl_po =
+    { m; inv = f_imp_simpl post_g.inv
+                 (f_xreal_cmp cmp post_v.inv (f_b2xr ev.inv)) } in
   let concl_po = f_forall_mems_ss_inv mpo concl_po in
 
   FApi.xmutate1 tc `HlDeno [concl_e; concl_pr; concl_po]
@@ -227,30 +250,25 @@ let process_phoare_deno info tc =
 
 (* -------------------------------------------------------------------- *)
 let process_ehoare_deno info tc =
-  let error () =
-    tc_error !!tc "the conclusion is not a suitable Pr expression" in
+  let cmp, _, _ = destr_ehoare_pr_goal !!tc (FApi.tc1_goal tc) in
 
+  (* a cut side [(P, f)] is a guarded side, a bare [f] has the guard [true];
+     the defaults are the bound and the indicator of the event *)
   let process_cut (pre, post) =
     let hyps, concl = FApi.tc1_flat tc in
-    let f, bd =
-      match concl.f_node with
-      | Fapp({f_node = Fop (op, _)}, [f1; f2])
-          when EcPath.p_equal op EcCoreLib.CI_Real.p_real_le && is_pr f1 ->
-          (f1, f2) (* f1 <= f2 *)
-      | _ -> error ()
-    in
-
+    let _, f, bd = destr_ehoare_pr_goal !!tc concl in
     let { pr_fun = f } as pr = destr_pr f in
     let event = pr.pr_event in
     let m = event.m in
     let penv, qenv = LDecl.hoareF m f hyps in
     let smem = Fsubst.f_bind_mem Fsubst.f_subst_id pr.pr_mem m in
-    let dpre = {m;inv=f_r2xr (Fsubst.f_subst smem bd)} in
-
-    let pre  = pre  |> omap_dfl (fun p -> {m;inv=TTC.pf_process_xreal !!tc penv p}) dpre  in
-    let post = post |> omap_dfl (fun p -> {m;inv=TTC.pf_process_xreal !!tc qenv p}) (map_ss_inv1 f_b2xr event) in
-
-    f_eHoareF pre f post
+    let dpre  = f_r2xr (Fsubst.f_subst smem bd) in
+    let dpost = f_b2xr event.inv in
+    let side env dfl =
+      omap_dfl (EcPhlConseq.process_cut_side !!tc env txreal) dfl in
+    let prg, prv = EcPhlConseq.ehoare_side_split f_true (side penv dpre pre) in
+    let pog, pov = EcPhlConseq.ehoare_side_split f_true (side qenv dpost post) in
+    f_eHoareF ~prb:prg ~pob:pog ~cmp {m;inv=prv} f {m;inv=pov}
   in
 
   let pt, ax =
@@ -259,7 +277,12 @@ let process_ehoare_deno info tc =
 
   let pre, post =
     let hf = pf_as_ehoareF !!tc ax in
-      (ehf_pr_val hf, ehf_po_val hf)
+    if hf.ehf_cmp <> cmp then
+      tc_error !!tc
+        "the direction of the ehoare judgment does not match the goal: \
+         an upper bound on a probability needs a [>=] judgment, a lower \
+         bound a [<=] one, and an equality a [=] one";
+    (ehf_pr hf, ehf_po hf)
   in
 
   FApi.t_first (EcLowGoal.Apply.t_apply_bwd_hi ~dpe:true pt) (t_ehoare_deno pre post tc)
