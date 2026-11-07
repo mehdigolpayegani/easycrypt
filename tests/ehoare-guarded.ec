@@ -461,10 +461,9 @@ qed.
 (* The two while directions are kept disjoint by design.  These are machine-
    checked with [fail t] (succeeds iff the inner tactic fails). *)
 
-(* On a [<=] goal the direction-primary dispatcher routes to the decay rule, so
-   the single-argument STANDARD form [while E] is refused (it wants [while V
-   beta]).  This checks the dispatcher's direction split; the standard rule's
-   own upper-bound guard is a second line of defense behind it. *)
+(* On a [<=] goal the single-argument form [while V] is the variant rule, whose
+   argument is an integer: the xreal invariant of the standard upper-bound form
+   is refused. *)
 lemma t_while_std_rejects_lower :
   ehoare [<=] [W.loop : {true | 1%xr} ==> {!W.b | 1%xr}].
 proof. proc. fail while (W.b%xr). abort.
@@ -922,3 +921,148 @@ qed.
 lemma t_if_noguard :
   ehoare [IfG.f : 1%xr ==> 1%xr].
 proof. by proc; if; auto. qed.
+
+(* -------------------------------------------------------------------- *)
+(* While rule with an integer variant:  [while V] on a [<=] or [=] goal, or
+   [while (P, E) V] after an initialization prefix.  The subgoals are the body
+   judgment  forall k, {P /\ b /\ V = k | E} c {P /\ V < k | E}  in the
+   direction of the goal, and  P /\ b => 0 <= V, after a post bridge when the
+   post is not {P /\ !b | E}. *)
+module WCountdownInit = {
+  proc init_loop() : unit = {
+    WCountdown.c <- 0;
+    while (0 < WCountdown.x) {
+      WCountdown.x <- WCountdown.x - 1;
+      WCountdown.c <- WCountdown.c + 1;
+    }
+  }
+}.
+
+(* Variant rule on a bare loop: the invariant {P | E} is read from the pre,
+   the variant x decreases at every iteration and is non-negative inside
+   the loop.  No witness, no factor, no finiteness condition. *)
+lemma t_while_variant_countdown :
+  ehoare [<=] [WCountdown.loop :
+    {0 <= WCountdown.x /\ 0 <= WCountdown.c |
+       (WCountdown.c + WCountdown.x)%xr}
+    ==>
+    {WCountdown.x = 0 /\ 0 <= WCountdown.c |
+       WCountdown.c%xr}].
+proof.
+  proc.
+  while (WCountdown.x).
+
+  (* Post bridge: P /\ !(0 < x) implies x = 0, and then c+x = c. *)
+  + move=> &hr [[hx hc] hstop].
+    have hxle : WCountdown.x{hr} <= 0 by apply/lezNgt.
+    have hx0 : WCountdown.x{hr} = 0 by
+      rewrite eqz_leq hxle hx.
+    by rewrite hx0 /=.
+
+  (* G1: the body preserves P and E = c+x, and decreases x. *)
+  + move=> k.
+    wp.
+    skip => &hr /=.
+    move=> [[[hx hc] hxpos] <-].
+    split.
+    + split.
+      + split.
+        + rewrite subz_ge0.
+          by move: hxpos; rewrite ltzE add0z.
+        + apply: (lez_trans WCountdown.c{hr}); first exact hc.
+          by rewrite lez_addl lez01.
+      + by rewrite ltzE subrK.
+    + by rewrite -addzA (addzC 1) subrK.
+
+  (* G2: x is non-negative inside the loop. *)
+  + by move=> &hr [[hx _] _].
+qed.
+
+(* Variant rule after splitting the initialization prefix. *)
+lemma t_while_variant_prefix :
+  ehoare [<=] [WCountdownInit.init_loop :
+    {0 <= WCountdown.x | WCountdown.x%xr}
+    ==>
+    {WCountdown.x = 0 | WCountdown.c%xr}].
+proof.
+  proc.
+  while ((0 <= WCountdown.x /\ 0 <= WCountdown.c),
+         (WCountdown.c + WCountdown.x)%xr)
+        (WCountdown.x).
+  + move=> &hr [[hx hc] hstop].
+    have hxle : WCountdown.x{hr} <= 0 by apply/lezNgt.
+    have hx0 : WCountdown.x{hr} = 0 by
+      rewrite eqz_leq hxle hx.
+    by rewrite hx0 /=.
+  + move=> k.
+    wp.
+    skip => &hr /=.
+    move=> [[[hx hc] hxpos] <-].
+    split.
+    + split.
+      + split.
+        + rewrite subz_ge0.
+          by move: hxpos; rewrite ltzE add0z.
+        + apply: (lez_trans WCountdown.c{hr}); first exact hc.
+          by rewrite lez_addl lez01.
+      + by rewrite ltzE subrK.
+    + by rewrite -addzA (addzC 1) subrK.
+  + by move=> &hr [[hx _] _].
+  (* prefix: {0 <= x | x}  c <- 0  {P | c + x} *)
+  + by wp; skip.
+qed.
+
+(* On an equality goal, the body premise is an equality: its upper half is
+   rule Park, its lower half the variant rule.  Here the loop computes c + x
+   exactly. *)
+lemma t_while_variant_eq :
+  ehoare [=] [WCountdown.loop :
+    {0 <= WCountdown.x /\ 0 <= WCountdown.c |
+       (WCountdown.c + WCountdown.x)%xr}
+    ==>
+    {WCountdown.x = 0 /\ 0 <= WCountdown.c | WCountdown.c%xr}].
+proof.
+  proc.
+  while (WCountdown.x).
+  + move=> &hr [[hx hc] hstop].
+    have hxle : WCountdown.x{hr} <= 0 by apply/lezNgt.
+    have hx0 : WCountdown.x{hr} = 0 by
+      rewrite eqz_leq hxle hx.
+    by rewrite hx0 /=.
+  + move=> k.
+    wp.
+    skip => &hr /=.
+    move=> [[[hx hc] hxpos] <-].
+    split.
+    + split.
+      + split.
+        + rewrite subz_ge0.
+          by move: hxpos; rewrite ltzE add0z.
+        + apply: (lez_trans WCountdown.c{hr}); first exact hc.
+          by rewrite lez_addl lez01.
+      + by rewrite ltzE subrK.
+    + by rewrite -addzA (addzC 1) subrK.
+  + by move=> &hr [[hx _] _].
+qed.
+
+(* The decay rule accepts equalities as well. *)
+module WEq = {
+  var b : bool
+  proc loop() : unit = {
+    while (b) {
+      b <- false;
+    }
+  }
+}.
+
+lemma t_while_mult_eq :
+  ehoare [=] [WEq.loop : {true | 1%xr} ==> {!WEq.b | 1%xr}].
+proof.
+  proc.
+  while (WEq.b%xr) 0%r.
+  + by wp; skip.
+  + by move=> &hr hb /=; rewrite hb.
+  + by wp; skip.
+  + by move=> &hr /=.
+  + by move=> &hr _ /=.
+qed.

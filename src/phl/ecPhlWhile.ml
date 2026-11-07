@@ -141,17 +141,17 @@ let t_ehoare_while (inv : ss_inv) tc =
      t_id] tc
 
 (* -------------------------------------------------------------------- *)
-(* Lower-bound While-Mult for {P | E} while b do c {P /\ !b | E},
+(* Lower-bound (or exact) While-Mult for {P | E} while b do c {P /\ !b | E},
    with decay witness V and factor beta: the expected value of V on the
    outputs of the body that stay inside the loop is at most beta ** V. *)
 let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
   let env  = FApi.tc1_env tc in
   let hyps = FApi.tc1_hyps tc in
   let hs = tc1_as_ehoareS tc in
-  if hs.ehs_cmp <> FHle then
+  if hs.ehs_cmp = FHge then
     tc_error !!tc
-      "the multiplicative-decay while rule applies only to lower-bound \
-       ([<=]) judgments";
+      "the multiplicative-decay while rule applies to lower-bound ([<=]) \
+       and equality ([=]) judgments only";
   let (e, c), s = tc1_last_while tc hs.ehs_s in
   check_single_stmt tc s;
   let (m, _mt) = hs.ehs_m in
@@ -180,11 +180,12 @@ let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
   let beta_v = f_xsmul (f_r2rp beta.inv) v.inv in
   let mem_prop body =
     EcSubst.f_forall_mems_ss_inv hs.ehs_m { (ehs_pr hs) with inv = body } in
-  (* (1) The body preserves the lower invariant. *)
+  (* (1) The body preserves the invariant, in the direction of the goal:
+     for an equality, the upper bound is rule Park. *)
   let g1 =
     f_eHoareS_r
       { hs with ehs_pr = f_tuple [p_and_b; pre_v]; ehs_s = c;
-                ehs_po = f_tuple [pre_g; pre_v]; ehs_cmp = FHle }
+                ehs_po = f_tuple [pre_g; pre_v] }
       [@alert "-priv_pl"] in
   (* (2) P /\ b => E <= V. *)
   let g2 = mem_prop (f_imp_simpl p_and_b (f_xreal_le pre_v v.inv)) in
@@ -206,10 +207,10 @@ let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
 let t_ehoare_while_mult (v : ss_inv) (beta : ss_inv) tc =
   let hyps = FApi.tc1_hyps tc in
   let hs = tc1_as_ehoareS tc in
-  if hs.ehs_cmp <> FHle then
+  if hs.ehs_cmp = FHge then
     tc_error !!tc
-      "the multiplicative-decay while rule applies only to lower-bound \
-       ([<=]) judgments";
+      "the multiplicative-decay while rule applies to lower-bound ([<=]) \
+       and equality ([=]) judgments only";
   let (e, _), _ = tc1_last_while tc hs.ehs_s in
   let m = EcMemory.memory hs.ehs_m in
   let e = ss_inv_of_expr m e in
@@ -231,15 +232,97 @@ let t_ehoare_while_mult (v : ss_inv) (beta : ss_inv) tc =
 let t_ehoare_while_mult_seq
     (loop_inv : ss_inv) (v : ss_inv) (beta : ss_inv) tc =
   let hs = tc1_as_ehoareS tc in
-  if hs.ehs_cmp <> FHle then
+  if hs.ehs_cmp = FHge then
     tc_error !!tc
-      "the multiplicative-decay while rule applies only to lower-bound \
-       ([<=]) judgments";
+      "the multiplicative-decay while rule applies to lower-bound ([<=]) \
+       and equality ([=]) judgments only";
   let tc =
     FApi.t_rotate `Left 1
       (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) loop_inv tc) in
   FApi.t_sub
     [t_ehoare_while_mult v beta;
+     t_id]
+    tc
+
+(* -------------------------------------------------------------------- *)
+(* Lower-bound (or exact) While-Variant for {P | E} while b do c {P /\ !b | E}, with
+   an integer variant V that every iteration decreases, and that is
+   non-negative inside the loop: the loop runs at most V more times, so
+   that no residual expectation is lost. *)
+let t_ehoare_while_variant_core (v : ss_inv) tc =
+  let hyps = FApi.tc1_hyps tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the variant while rule applies to lower-bound ([<=]) and equality \
+       ([=]) judgments only";
+  let (e, c), s = tc1_last_while tc hs.ehs_s in
+  check_single_stmt tc s;
+  let (m, _mt) = hs.ehs_m in
+  let e = ss_inv_of_expr m e in
+  let v = EcSubst.ss_inv_rebind v m in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  (* The core expects the canonical exit post {P /\ !b | E}. *)
+  let exp_po = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] in
+  if not (EcReduction.ss_inv_alpha_eq hyps (ehs_po hs)
+            { (ehs_po hs) with inv = exp_po }) then
+    tc_error !!tc "ehoare while-variant rule: wrong post-condition";
+  let p_and_b = f_and_simpl pre_g e.inv in
+  let mem_prop body =
+    EcSubst.f_forall_mems_ss_inv hs.ehs_m { (ehs_pr hs) with inv = body } in
+  (* (1) The body preserves the invariant, in the direction of the goal,
+     and decreases V: forall k, {P /\ b /\ V = k | E} c {P /\ V < k | E};
+     for an equality, the upper bound is rule Park. *)
+  let k_id = EcIdent.create "k" in
+  let k = f_local k_id tint in
+  let g1 =
+    f_forall_simpl [(k_id, GTty tint)]
+      (f_eHoareS_r
+         { hs with
+           ehs_pr  = f_tuple [f_and_simpl p_and_b (f_eq v.inv k); pre_v];
+           ehs_s   = c;
+           ehs_po  = f_tuple [f_and_simpl pre_g (f_int_lt v.inv k); pre_v] }
+         [@alert "-priv_pl"]) in
+  (* (2) V is non-negative inside the loop. *)
+  let g2 = mem_prop (f_imp_simpl p_and_b (f_int_le f_i0 v.inv)) in
+  FApi.xmutate1 tc `While [g1; g2]
+
+(* Canonicalize the exit post with consequence before applying the rule. *)
+let t_ehoare_while_variant (v : ss_inv) tc =
+  let hyps = FApi.tc1_hyps tc in
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the variant while rule applies to lower-bound ([<=]) and equality \
+       ([=]) judgments only";
+  let (e, _), _ = tc1_last_while tc hs.ehs_s in
+  let m = EcMemory.memory hs.ehs_m in
+  let e = ss_inv_of_expr m e in
+  let pre_g = (ehs_prb hs).inv  and pre_v = (ehs_pr_val hs).inv in
+  let canon_post =
+    { (ehs_po hs) with
+      inv = f_tuple [f_and_simpl pre_g (f_not e.inv); pre_v] } in
+  if EcReduction.ss_inv_alpha_eq hyps (ehs_po hs) canon_post then
+    t_ehoare_while_variant_core v tc
+  else
+    (EcPhlConseq.t_ehoareS_conseq (ehs_pr hs) canon_post @+
+       [t_trivial;
+        t_id;
+        t_ehoare_while_variant_core v]) tc
+
+(* Split an initialization prefix from the final loop and apply the variant
+   rule to the loop goal. *)
+let t_ehoare_while_variant_seq (loop_inv : ss_inv) (v : ss_inv) tc =
+  let hs = tc1_as_ehoareS tc in
+  if hs.ehs_cmp = FHge then
+    tc_error !!tc
+      "the variant while rule applies to lower-bound ([<=]) and equality \
+       ([=]) judgments only";
+  let tc =
+    FApi.t_rotate `Left 1
+      (EcPhlSeq.t_ehoare_seq (GapBefore cpos1_last) loop_inv tc) in
+  FApi.t_sub
+    [t_ehoare_while_variant v;
      t_id]
     tc
 
@@ -700,8 +783,26 @@ let process_while side winfos tc =
                 "upper-bound ([>=]) while takes a single invariant: \
                  [while E] or the guarded form [while (P, E)]"
         end
-      | FHle -> begin
+      | FHle | FHeq -> begin
+          (* Lower bounds and equalities: the variant or decay rules, whose
+             body premise carries the direction of the goal. *)
+          let is_pair =
+            match EcLocation.unloc phi with
+            | EP.PFtuple [_; _] -> true
+            | _ -> false in
           match vrnt, bds with
+          | None, None ->
+              (* [while V] on a bare loop: the variant rule, with the loop
+                 invariant {P | E} read from the pre. *)
+              let _, v = TTC.tc1_process_Xhl_form tc tint phi in
+              t_ehoare_while_variant v tc
+          | Some v_pf, None when is_pair ->
+              (* [while (P,E) V]: the variant rule after splitting a prefix
+                 using a guarded loop invariant. *)
+              let _, loop_inv =
+                TTC.tc1_process_Xhl_form tc (ttuple [tbool; txreal]) phi in
+              let _, v = TTC.tc1_process_Xhl_form tc tint v_pf in
+              t_ehoare_while_variant_seq loop_inv v tc
           | Some beta_pf, None ->
               (* [while V beta] on a bare loop. *)
               let _, v    = TTC.tc1_process_Xhl_formula_xreal tc phi in
@@ -722,14 +823,11 @@ let process_while side winfos tc =
               t_ehoare_while_mult_seq loop_inv v beta tc
           | _ ->
               tc_error !!tc
-                "lower-bound ([<=]) while (multiplicative-decay) takes a decay \
-                 witness and factor: [while V beta], optionally preceded by a \
-                 loop invariant: [while (P, E) V beta]"
+                "lower-bound ([<=]) or equality ([=]) while takes an integer variant, \
+                 [while V], or a decay witness and factor, [while V beta], \
+                 optionally preceded by a loop invariant: [while (P, E) V] \
+                 and [while (P, E) V beta]"
         end
-      | FHeq ->
-          tc_error !!tc
-            "the while rule does not support equality ([=]) judgments; use an \
-             upper ([>=]) or lower ([<=]) bound"
     end
 
   | FbdHoareS _ -> begin
