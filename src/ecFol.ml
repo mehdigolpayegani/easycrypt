@@ -120,16 +120,10 @@ let f_decimal (n, (l, f)) =
 
 (* soft-constructor - xreal *)
 let fop_xreal_le = f_op CI.CI_Xreal.p_xle [] (toarrow [txreal; txreal] tbool)
-let fop_interp_ehoare_form =
-  f_op CI.CI_Xreal.p_interp_form [] (toarrow [tbool; txreal] txreal)
-
-let is_interp_ehoare_form_op (p, tys) = EcPath.p_equal p CI.CI_Xreal.p_interp_form && tys = []
-
 let fop_Ep ty =
   f_op CI.CI_Xreal.p_Ep [ty] (toarrow [tdistr ty; toarrow [ty] txreal] txreal)
 
 let f_xreal_le f1 f2 = f_app fop_xreal_le [f1; f2] tbool
-let f_interp_ehoare_form f1 f2 = f_app fop_interp_ehoare_form [f1; f2] txreal
 let f_Ep ty d f = f_app (fop_Ep ty) [d; f] txreal
 
 
@@ -1067,10 +1061,6 @@ let destr_exists_prenex ?(bound : int option) (f : form) =
         bd, Fsubst.f_subst s p in
       let bds = bd::bds in
       prenex_exists ~bound bds p
-
-    | bound, SFop (op, [f1; f2]) when is_interp_ehoare_form_op op ->
-      let (bds, f1) = prenex_exists ~bound bds f1 in
-      (bds, f_interp_ehoare_form f1 f2)
 
     | _ -> (bds, p)
   in

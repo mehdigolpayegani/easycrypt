@@ -229,8 +229,8 @@ module TacInternal = struct
     let (s_hd, s_wp) = o_split env i hs.ehs_s in
     let s_wp = EcModules.stmt s_wp in
     let po_g = (ehs_pob hs).inv  and po_v = (ehs_po_val hs).inv in
-    (* Guard and value are transformed separately (no direction-dependent
-       [`|`]-fold): value by [ewp], guard by [gwp]. *)
+    (* Guard and value are transformed separately: value by [ewp], guard
+       by [gwp]. *)
     let (s_wp_v, post_v) = ewp ~uselet env hs.ehs_m s_wp po_v in
     let (s_wp_g, post_g) = gwp ~uselet env hs.ehs_m s_wp po_g in
     (* [ewp]/[gwp] consume the same instructions, so the remainders align. *)

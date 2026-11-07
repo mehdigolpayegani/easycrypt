@@ -106,23 +106,22 @@ qed.
 lemma L:
   forall (a0 : bool array),
     ehoare [M.sample :
-            (0 <= arg.`1
+            {0 <= arg.`1
           /\ 0 <= arg.`2
           /\ size arg.`3 = arg.`1 * arg.`2
-          /\ size arg.`3 = size a0)
-        `|` (1%r / (2%r ^ (n * m)))%xr ==> (res = a0)%xr].
+          /\ size arg.`3 = size a0
+           | (1%r / (2%r ^ (n * m)))%xr} ==> {true | (res = a0)%xr}].
 proof.
 move=> a0.
 proc.
 while ((0 <= i <= n
      /\ 0 <= m
      /\ size a = n * m
-     /\ size a0 = size a)
-   `|`  (2%r ^ ((-(n - i) * m)%r))%xr
+     /\ size a0 = size a),
+       (2%r ^ ((-(n - i) * m)%r))%xr
        * (row_eq_upto i m a a0)%xr).
 (* !cond => inv => pos_f <= inv_f *)
-+ move=> &hr ?.
-  apply xle_cxr_r => ?.
++ move=> &hr [#] hi0 hin hm hsz hsz0 hnlt.
   have ->: n{hr} - i{hr} = 0 by smt().
   rewrite Ring.IntID.mul0r Ring.IntID.oppr0 rpow0 mul1m_simpl.
   apply xle_rle; split => *; 1: by smt().
@@ -132,24 +131,18 @@ while ((0 <= i <= n
   while (( 0 <= i < n
         /\ 0 <= j <= m
         /\ size a = n * m
-        /\ size a = size a0)
-          `|` (2%r ^ ((-((n - i) * m - j))%r))%xr
+        /\ size a = size a0),
+            (2%r ^ ((-((n - i) * m - j))%r))%xr
             * (row_eq_upto i m a a0 /\ cell_eq_upto i j m a a0)%xr).
   (* !cond => inv => pos_f <= inv_f *)
-  + move=> &hr /> ?.
-    rewrite xle_cxr_r => ?.
-    rewrite xle_cxr_l 1:/#.
+  + move=> &hr /> hi0 hin hj0 hjm hsz hsz0 hnlt; split; 1: smt().
     rewrite (_: - _ * m{hr} = - ((n{hr} - i{hr}) * m{hr} - j{hr})) //= 1:/#.
     rewrite (_: j{hr} = m{hr}) 1:/#.
     by rewrite -row_eq_upto_increase 1:/# ler_eqVlt; left; reflexivity.
   (* {cond /\ inv | inv_f} c {inv | inv_f} *)
-  + wp; skip => /> &hr ?.
-    apply xle_cxr_r => [#] 4? Hsize ?.
+  + wp; skip => &hr /> hi0 hin hj0 hjm Hsize hsz0 hjlt.
+    split; 1: by move=> b0 _; rewrite !size_set /#.
     rewrite Ep_dbiased /= 1:/#.
-    have -> /=: 0 <= i{hr} < n{hr} by smt().
-    have -> /=: 0 <= j{hr} + 1 <= m{hr} by smt().
-    rewrite !size_set !Hsize /=.
-    have -> /=: n{hr} * m{hr} = size a0 by smt().
     rewrite !to_pos_pos 1,2,3,4,5:#smt:(rpow_gt0 b2r_ge0).
     rewrite !cell_eq_upto_split 1,2:/# !get_set //=.
     - split; 1: by smt().
@@ -182,12 +175,10 @@ while ((0 <= i <= n
       rewrite (mulrC (b2r _) (2%r ^ - 1%r)).
       by rewrite mulrA -rpowD // /#.
   (* pre => inv *)
-  + wp; skip => &hr /> ?.
-    apply xle_cxr_r => [#] ?????.
-    rewrite xle_cxr_l 1:/#.
-    by have-> //: cell_eq_upto i{hr} 0 m{hr} a{hr} a0 by smt().
-auto => /> &hr.
-rewrite xle_cxr_r => [#] ????.
-rewrite xle_cxr_l 1:/# fromintN rpowN //= rpow_int //=.
-by have ->: row_eq_upto 0 m{hr} a{hr} a0 by smt().
+  + wp; skip => &hr /> hi0 hin hm hsz hsz0 hlt; split; 1: smt().
+    by have-> /=: cell_eq_upto i{hr} 0 m{hr} a{hr} a0 by smt().
+auto => /> &hr hn hm hsz hsz0; split; 1: smt().
+rewrite fromintN rpowN //= rpow_int //=.
+have -> /=: row_eq_upto 0 m{hr} a{hr} a0 by smt().
+by rewrite !to_pos_pos; 1,2: smt(RealOrder.expr_gt0 invr_ge0).
 qed.

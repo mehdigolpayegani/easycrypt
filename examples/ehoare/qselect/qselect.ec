@@ -213,18 +213,16 @@ proof.
   + by move=> &hr /> *; smt().
   + wp; exlim t, c, lo, hi, pos => t_ c_ lo_ hi_ pos_.
     call
-      (eh_p_partition (fun p c => (0 <= c) `|`
+      (eh_p_partition (fun p (c : int) =>
         if p = pos_ then c%xr
         else if p < pos_ then c%xr + (4 * (hi_ - (p+1)))%xr
         else  c%xr + (4 * ((p-1) - lo_))%xr)
        t_ c_ lo_ hi_).
     skip => &hr /= [#] 5!-> [#] hlo hpos hhi huniq hc hlt hlohi; split.
     + split; 1: smt().
-      move=> _ [t0 p0] c0 /= [#] -> hp0lo hp0hi hu hsz; split; 1: smt(uniq_on_sub).
-      by apply xle_cxr_r.
+      by move=> _ [t0 p0] c0 /= [#] -> hp0lo hp0hi hu hsz; smt(uniq_on_sub).
     move: (pos{hr}) (lo{hr}) (hi{hr}) (t{hr}) (c{hr}) hlo hpos hhi huniq hc hlt hlohi
       => {&hr lo_ hi_ pos_ t_ c_} pos lo hi t c *.
-    rewrite Ep_cxr; apply xle_cxr_l; 1: by move=> x /supp_dinter /= /#.
     rewrite -(eq_Ep _ (
          (fun (p0 : int) =>
             if p0 = pos then 0%xr

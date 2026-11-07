@@ -84,20 +84,20 @@ proof.
   by auto.
 qed.
 
-ehoare o_bad : O.o:
-    (O.bad => Q <= O.c) `|` if Q <= O.c then O.bad%xr else  (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr
-    ==> (O.bad => Q <= O.c)  `|` if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr.
+ehoare o_bad : O.o :
+  {O.bad => Q <= O.c | if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr}
+  ==>
+  {O.bad => Q <= O.c | if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr}.
 proof.
   proc.
   wp.
-  call /(fun x => (O.bad => Q <= O.c)
-          `|` if Q < O.c then O.bad%xr else x * eps%xr + (Q - O.c)%xr * (eps/p)%xr) extend_log_size.
-  auto => &hr /=; split.
+  call /(fun x => if Q < O.c then O.bad%xr else x * eps%xr + (Q - O.c)%xr * (eps/p)%xr) extend_log_size.
+  auto => &hr /= hbad; split.
   + move=> log; case: (O.c{hr} + 1 = Q) => [<- /= | hne].
     + rewrite Ep_mu (:(fun (a : r) => a \in log) = mem log); 1: by auto.
       rewrite -of_realM /=; smt(mu_mem_le_mu1 size_ge0 eps_ge0 dr_mu1).
-    by have -> : (Q <= O.c{hr} + 1) = (Q < O.c{hr} + 1) by smt().
-  apply xle_cxr => *; split; 1:smt().
+    have -> : (Q <= O.c{hr} + 1) = (Q < O.c{hr} + 1) by smt().
+    by split; 1: smt().
   have -> /=: (Q < O.c{hr} + 1) = (Q <= O.c{hr}) by smt().
   case (Q <= O.c{hr}); 1:smt().
   move=> hlt /=.
@@ -108,13 +108,17 @@ qed.
 lemma pr_bad &m (A<:Adv{-O}) : Pr[Main(A).main() @ &m : O.bad] <= eps * Q%r * (inv p).
   byehoare.
   + proc.
-    call (: (O.bad => Q <= O.c)`|` if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr ==> O.bad%xr).
-    + proc ((O.bad => Q <= O.c)`|` if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr).
-      + move => &hr; apply xle_cxr => *; split; 1:smt(). by auto.
-      + move => &hr; apply xle_cxr_r => *.
-        by case: (O.bad{hr}) => [ /# |*]; smt(xle0x).
+    call (: (O.bad => Q <= O.c, if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr)
+            ==> O.bad%xr).
+    + proc (O.bad => Q <= O.c, if Q <= O.c then O.bad%xr else (size O.log)%xr * eps%xr + (Q - O.c)%xr * (eps/p)%xr).
+      + by move=> &hr />.
+      + move=> &hr hb /=; case: (Q <= O.c{hr}) => //= hlt.
+        have -> /=: O.bad{hr} = false by smt().
+        smt().
       by apply o_bad.
-    by wp; auto; move => *; case (Q <= 0); smt(xle0x).
+    wp; skip => &hr /=; case (Q <= 0) => hq /=; 1: smt(xle0x).
+    rewrite !to_pos_pos; 1..3: smt(eps_ge0 invr_ge0 ge0_mu divr_ge0).
+    smt().
   + auto.
   auto.
 qed.

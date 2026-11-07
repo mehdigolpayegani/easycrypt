@@ -1029,84 +1029,10 @@ lemma Ep_dinterval_le (f : int -> xreal) (i j : int) :
   Ep [i..j] f = (1%r / (j - i + 1)%r) ** big predT f (range i (j + 1)).
 proof. by move=> h; rewrite Ep_dinterval h. qed.
 
-(* -------------------------------------------------------------------- *)
-op (`|`) (b:bool) (x : xreal) = 
-   if b then x else oo.
-
-lemma cxr_true (x:xreal) : true `|` x = x
-by [].
-hint simplify cxr_true.
-
-lemma cxrA (b1 b2 : bool) (f : xreal) : b1 `|` (b2 `|` f) = (b1 /\ b2) `|` f.
-proof. rewrite /(`|`) /#. qed.
-hint simplify cxrA.
-
-lemma xle_cxr_r b (f1 f2 : xreal) : (b => f1 <= f2) => f1 <= (b `|` f2).
-proof. by rewrite /(`|`); case:b. qed.
-
-lemma xle_cxr_l b (f1 f2 : xreal) : b => f1 <= f2 => (b `|` f1) <= f2.
-proof. move=> />. qed.
-
-lemma xle_cxr b1 b2 (f1 f2 : xreal): 
-  (b2 => (b1 /\ f1 <= f2)) => 
-  (b1 `|` f1) <= (b2 `|` f2).
-proof. move=> h; apply xle_cxr_r => /h />. qed.
-
-lemma xle_cxr_b b1 b2 f : 
-   (b1 => b2) =>
-   b2 `|` f <= b1 `|` f.
-proof. move=> h; apply xle_cxr_r => /h />. qed.
-
-lemma xle_cxr_f b (f1 f2 : xreal) : 
-   (b => f1 <= f2) =>
-   b `|` f1 <= b `|` f2.
-proof. by move=> h;apply xle_cxr => />. qed.
-
 (* TODO: move this *)
 lemma Rp_to_real_eq (x y : realp) : (x = y) <=> (to_real x = to_real y).
 proof. by split=> [/>|/to_real_inj]. qed.
 
-(* -------------------------------------------------------------------- *)
-lemma Ep_cxr (d:'a distr) (b:'a -> bool) (f:'a -> xreal) : 
-  Ep d (fun x => b x `|` f x) = 
-  (forall x, x \in d => b x) `|` Ep d f. 
-proof.
-  rewrite /Ep /(`|`) /=. 
-  case: (forall (x : 'a), x \in d => b x) => hb; last first. 
-  + have /> x xin xb: exists x, x \in d /\ !b x by smt().
-    have -> // : !is_real (fun (x0 : 'a) => mu1 d x0 ** if b x0 then f x0 else oo). 
-    rewrite /is_real; apply /negP => h.
-    by have := h x; rewrite xb /= /( ** ) /= Rp_to_real_eq /= /#.
-  rewrite (eq_is_real_md _ _ f).
-  + by move=> x /hb /= ->.
-  case: (is_real (d ** f)) => // _; congr; apply fun_ext => x.
-  rewrite /( **) Rp_to_real_eq /=; smt(ge0_mu1).
-qed.
-
-lemma if_cxr (b b1 b2:bool) (f1 f2: xreal) : 
-  (if b then (b1 `|` f1) else (b2 `|` f2)) = 
-  (if b then b1 else b2) `|` if b then f1 else f2.
-proof. smt(). qed.
-
-lemma if_cxr_l (b b1:bool) (f1 f2: xreal) : 
-  (if b then (b1 `|` f1) else f2) = 
-  (b => b1) `|` if b then f1 else f2
-by smt().
-
-lemma if_cxr_r (b b2:bool) (f1 f2: xreal) : 
-  (if b then f1 else (b2 `|` f2) ) = 
-  (!b => b2) `|` if b then f1 else f2
-by smt().
-
-lemma cxrDl b (f1 f2:xreal) : b `|` f1 + f2 = b `|` (f1 + f2).
-proof. by rewrite /(`|`); case: b. qed.
-
-lemma cxrDr b (f1 f2:xreal) : f1 + (b `|` f2)  = b `|` (f1 + f2).
-proof. by rewrite /(`|`); case: b. qed.
-hint simplify cxrDl, cxrDr.
-(* FIXME: be able to add this 
- if_cxr, if_cxr_l, if_cxr_r.
-*)
 
 (* -------------------------------------------------------------------- *)
 (* Concavity                                                            *)
@@ -1215,15 +1141,11 @@ hint solve 0 concave_incr :
 hint solve 1 concave_incr :
   concave_incrD concave_incrMr concave_incrMl.
 
-lemma concave_incr_cxr (b:bool) (f : xreal -> xreal) : 
-  concave_incr f => concave_incr (fun x => b `|` f x).
-proof. by case b. qed.
-
 lemma concave_incr_if (b:bool) (f1 f2: xreal -> xreal) : 
   concave_incr f1 => concave_incr f2 => concave_incr (fun x => if b then f1 x else f2 x).
 proof. by case b. qed.
 
-hint solve 2 concave_incr : concave_incr_cxr concave_incr_if.
+hint solve 2 concave_incr : concave_incr_if.
 
 (* -------------------------------------------------------------------- *)
 (* Convexity                                                            *)
@@ -1355,6 +1277,3 @@ hint solve 1 convex_incr :
    This is the lower-bound counterpart of the Jensen TODO for [concave]
    above. *)
 
-(* -------------------------------------------------------------------- *)
-lemma trans_help P Q f : (P => Q) => (P `|` f) = oo \/ Q.
-proof. case P => />. qed.

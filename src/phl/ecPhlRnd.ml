@@ -55,8 +55,8 @@ module Core = struct
     let xinv = { m = fst hs.ehs_m; inv = f_local x_id ty_distr } in
     let m = fst hs.ehs_m in
     let distr = EcFol.ss_inv_of_expr m distr in
-    (* Guard and value transformed separately (no [`|`]-fold): value -> its
-       expectation, guard -> [forall x, x \in supp d => Q[lv := x]]. *)
+    (* Guard and value transformed separately: value -> its expectation,
+       guard -> [forall x, x \in supp d => Q[lv := x]]. *)
     let po_g = (ehs_pob hs).inv  and po_v = (ehs_po_val hs).inv in
     let v_post = subst_form_lv env lv xinv { (ehs_po hs) with inv = po_v } in
     let v_post = map_ss_inv2 (f_Ep ty_distr) distr

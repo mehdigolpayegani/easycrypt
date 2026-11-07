@@ -830,68 +830,51 @@ let t_concave_incr = t_shape_incr "concave_incr"
 let t_convex_incr  = t_shape_incr "convex_incr"
 
 (* -------------------------------------------------------------------- *)
-let t_ehoare_conseq_nm_end =
-  [ t_concave_incr;
-    t_id;
-    t_id;
-    t_id ]
+(* Consequence with the frame of the variables the program does not write,
+   carried by the guards:
 
-(* -------------------------------------------------------------------- *)
-(* NB: the "_nm" rules build a CONCAVE [fc] for Jensen [E[fc v] <= fc(E v)],
-   so they are upper-bound only.  Here the [`|`]/[oo] use is CORRECT (not the
-   guard-fold antipattern); a [<=]/[=] version is a NEW convex-based rule, not
-   a fix. *)
+     forall m, P => P' /\ (f <> f')
+     forall m, P => forall [result] modified, Q' => Q /\ (g' <> g)
+     {P' | f'} <> c {Q' | g'}
+     ---------------------------------------------------------------
+     {P | f} <> c {Q | g}
+
+   The post obligation only has to hold on the memories the program
+   reaches from [P], where the unmodified variables keep their value. *)
 let t_ehoareF_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
   let (env, hyps, _) = FApi.tc1_eflat tc in
   let hf = tc1_as_ehoareF tc in
-  if hf.ehf_cmp <> FHge then
-    tc_error !!tc
-      "this consequence rule builds a concave function, so it supports only \
-       upper-bound ([>=]) judgments";
-  let f = hf.ehf_f in
-  let _mpr,mpo = Fun.hoareF_memenv hf.ehf_m f env in
-  let fsig = (Fun.by_xpath f env).f_sig in
-  let _cond1, cond2 = conseq_econd hf.ehf_cmp (ehf_pr hf) (ehf_po hf) pre post in
+  let mpr, _ = EcEnv.Fun.hoareF_memenv hf.ehf_m hf.ehf_f env in
+  let cond1, cond2 =
+    conseq_econd hf.ehf_cmp (ehf_pr hf) (ehf_po hf) pre post in
+  let concl1 = f_forall_mems_ss_inv mpr cond1 in
+  let concl2, _, _ =
+    cond_F_notmod_core ~mk_other:false env hyps hf.ehf_f hf.ehf_m
+      (ehf_prb hf) cond2 in
+  let pre  = ss_inv_rebind pre hf.ehf_m in
+  let post = ss_inv_rebind post hf.ehf_m in
+  let concl3 =
+    f_eHoareF_r { hf with ehf_pr = ehoare_as_tuple pre;
+                          ehf_po = ehoare_as_tuple post }
+      [@alert "-priv_pl"] in
+  FApi.xmutate1 tc `HlConseq [concl1; concl2; concl3]
 
-  let pvres = pv_res in
-  let vres = LDecl.fresh_id hyps "result" in
-  let fres = f_local vres fsig.fs_ret in
-  let m    = fst mpo in
-  let s = PVM.add env pvres m fres PVM.empty in
-  let cond = map_ss_inv1 (PVM.subst env s) cond2 in
-
-  let modi = f_write env f in
-  let cond,_,_ = generalize_mod_ env modi cond in
-  let cond = map_ss_inv1 (f_forall_simpl [(vres, GTty fsig.fs_ret)]) cond in
-
-  let fc =
-    let x = EcIdent.create "x" in
-    let f_interp_ehoare_form' cond =
-      f_interp_ehoare_form cond (f_local x txreal) in
-    map_ss_inv1 (fun cd -> f_lambda [x,GTty txreal] (f_interp_ehoare_form' cd)) cond in
-
-  (t_ehoareF_transform fc pre post @+ t_ehoare_conseq_nm_end) tc
-
-(* -------------------------------------------------------------------- *)
 let t_ehoareS_conseq_nm (pre : ss_inv) (post : ss_inv) (tc : tcenv1) =
   let env = FApi.tc1_env tc in
   let hs = tc1_as_ehoareS tc in
-  if hs.ehs_cmp <> FHge then
-    tc_error !!tc
-      "this consequence rule builds a concave function, so it supports only \
-       upper-bound ([>=]) judgments";
-  let s = hs.ehs_s in
-  let modi = s_write env s in
-  let _cond1, cond2 = conseq_econd hs.ehs_cmp (ehs_pr hs) (ehs_po hs) pre post in
-  let cond, _bdg, _bde = generalize_mod_ env modi cond2 in
-  let fc =
-    let x = EcIdent.create "x" in
-    let f_interp_ehoare_form' cond =
-      f_interp_ehoare_form cond (f_local x txreal) in
-    map_ss_inv1 (fun cond -> f_lambda [x,GTty txreal] (f_interp_ehoare_form' cond)) cond in
-
-  (t_ehoareS_transform fc pre post @+ t_ehoare_conseq_nm_end) tc
-
+  let cond1, cond2 =
+    conseq_econd hs.ehs_cmp (ehs_pr hs) (ehs_po hs) pre post in
+  let concl1 = f_forall_mems_ss_inv hs.ehs_m cond1 in
+  let concl2, _, _ =
+    cond_S_notmod_core ~mk_other:false env hs.ehs_s hs.ehs_m
+      (ehs_prb hs) cond2 in
+  let pre  = ss_inv_rebind pre (fst hs.ehs_m) in
+  let post = ss_inv_rebind post (fst hs.ehs_m) in
+  let concl3 =
+    f_eHoareS_r { hs with ehs_pr = ehoare_as_tuple pre;
+                          ehs_po = ehoare_as_tuple post }
+      [@alert "-priv_pl"] in
+  FApi.xmutate1 tc `HlConseq [concl1; concl2; concl3]
 
 (* -------------------------------------------------------------------- *)
 (* Process the "concave" tactic for ehoare judgments.                    *)

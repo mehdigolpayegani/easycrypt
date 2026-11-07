@@ -13,9 +13,8 @@ module M = {
 lemma L &m (_x : int):
   Pr [ M.main_int(_x) @ &m : _x = res ] <= 1%r.
 proof.
-byehoare (_: ((arg = _x) `|` (1%xr)) ==> _) => //.
-- proc; auto => &hr.
-  by apply xle_cxr_r => ->.
+byehoare (_: (arg = _x, 1%xr) ==> _) => //.
+- by proc; auto.
 qed.
 
 lemma L1 (&m: {arg: bool}): !arg{m} =>

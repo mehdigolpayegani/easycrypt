@@ -171,11 +171,15 @@ module FunAbsLow = struct
     (inv, inv, sg)
 
   (* ------------------------------------------------------------------ *)
+  (* [inv] is a value, or a guarded pair [(P, f)]: the oracles then have
+     to preserve [P] as well, and neither side may read the globals of the
+     abstract procedure. *)
   let ehoareF_abs_spec _pf env f (inv: ss_inv) =
     let (top, _, oi, _) = EcLowPhlGoal.abstract_info env f in
     let fv = PV.fv env inv.m inv.inv in
     PV.check_depend env fv top;
-    let ospec o = f_eHoareF inv o inv in
+    let g, v = ehoare_pair_split inv in
+    let ospec o = f_eHoareF ~prb:g.inv ~pob:g.inv v o v in
     let sg = List.map ospec (OI.allowed oi) in
     (inv, inv, sg)
 
@@ -655,7 +659,13 @@ let process_fun_abs inv tc =
     let hyps = FApi.tc1_hyps tc in
     let m = EcIdent.create "&hr" in
     let env' = LDecl.inv_memenv1 m hyps in
-    let inv  = TTC.pf_process_xreal !!tc env' inv in
+    let inv  =
+      match EcLocation.unloc inv with
+      | PFtuple [pg; pv] ->
+          let g = TTC.pf_process_form !!tc env' tbool pg in
+          let v = TTC.pf_process_xreal !!tc env' pv in
+          f_tuple [g; v]
+      | _ -> TTC.pf_process_xreal !!tc env' inv in
     t_ehoareF_abs {inv;m} tc
 
   and t_bdhoare tc =

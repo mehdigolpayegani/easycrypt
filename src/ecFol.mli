@@ -70,8 +70,6 @@ val f_decimal  : zint * (int * zint) -> form
 
 (* soft-constructor - xreal *)
 val f_xreal_le : form -> form -> form
-val fop_interp_ehoare_form : form
-val f_interp_ehoare_form : form -> form -> form
 val f_Ep : EcTypes.ty -> form -> form -> form
 val f_concave_incr : form -> form
 val f_convex_incr  : form -> form

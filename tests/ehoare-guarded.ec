@@ -10,9 +10,7 @@
 require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder.
 
-(* GEO example for upper bound*)
-abbrev (`|`) b (i : int) = b `|` i%xr.
-
+(* GEO example for upper bound *)
 module Ex = {
   var ct : int
 
@@ -30,62 +28,11 @@ module Ex = {
   }
 }.
 
-(* { 0 <= n | 2 * n } rw { res } *)
-ehoare rw_time : Ex.rw :
-  (0 <= n) `|` (2 * n)%xr ==> res%xr.
-proof.
-  proc.
-  while ((0 <= n /\ 0 <= Ex.ct) `|` (2 * n + Ex.ct)).
-  (* ct <=  !(n < 0) | I *)
-  + by smt().
-  (* { 0 < n | I } Loop-Body { I } *)
-  + auto => &hr />.
-    (*Only line that was needed to be added to the proof *)
-    move=> hn.
-    apply xle_cxr_r => /> *.
-    rewrite Ep_dbool /=.
-    have -> /=: 0 <= n{hr} - 1 by smt().
-    have -> /=: 0 <= Ex.ct{hr} + 1 by smt().
-    by smt().
-  by auto.
-  qed.
-(* proof.
-  proc.
-  while ((0 <= n /\ 0 <= Ex.ct) `|` (2 * n + Ex.ct)).
-  (* ct <=  !(n < 0) | I *)
-  (* + by smt(). *)
-  + move=> &hr hstop.
-  apply xle_cxr_r.
-  move=> [hn0 hct].
-  have hnle : n{hr} <= 0.
-  - apply/lezNgt.
-    exact hstop.
-  have hnzero : n{hr} = 0 by
-    rewrite eqz_leq hnle hn0.
-  by rewrite hnzero.
-  (* { 0 < n | I } Loop-Body { I } *)
-  + auto => &hr /= hn.
-    apply xle_cxr_r.
-    move=> [hn0 hct0].
-    rewrite Ep_dbool /=.
-    have -> /=: 0 <= n{hr} - 1 by smt().
-    have -> /= : 0 <= n{hr} by exact hn0.
-    have -> /=: 0 <= Ex.ct{hr} + 1 by smt().
-    by smt().
-  by auto. *)
-
 (* -------------------------------------------------------------------- *)
 (* Upper-bound while with a GUARDED invariant:  [while (P, E)].
 
-   [P] stays in the boolean guard instead of being folded into the value
-   with [`|`], so both [P] and the loop condition reach the body premise as
-   plain hypotheses and the proof needs no [xle_cxr_r] (compare [rw_time]
-   above, which states the same theorem in the folded style).
-
-   This is ergonomics, not extra power: for the upper bound [cxrA] gives
-   [b1 `|` (b2 `|` f) = (b1 /\ b2) `|` f], so [while (P, E)] is exactly
-   [while (P `|` E)].  The core rule already read the guard from the goal;
-   only the wrapper used to hard-code [true]. *)
+   [P] stays in the boolean guard, so both [P] and the loop condition reach
+   the body premise as plain hypotheses. *)
 ehoare rw_time_guarded : Ex.rw :
   {0 <= n | (2 * n)%xr} ==> res%xr.
 proof.
@@ -159,8 +106,7 @@ qed.
    Genuinely true: with the guard x <= 1 we get res = x+1 <= 2 = pre, so the
    value obligation  res <= 2  and the post guard  res <= 2  both hold.
    This exercises the SEPARATED wp: the guard (res <= 2) and the value (res)
-   are pushed back through "y <- x+1" INDEPENDENTLY, with no direction-
-   dependent `|`-folding. *)
+   are pushed back through "y <- x+1" INDEPENDENTLY. *)
 lemma t_ge :
   ehoare [>=] [M.f : {x <= 1 | 2%xr} ==> {res <= 2 | res%xr}].
 proof. 
@@ -193,10 +139,7 @@ proof.
   qed.
 
 
-(* [=] = equality: pre = E[post].  True at x = 1 (res = 2).
-   The equality direction was previously impossible to even state through wp
-   (the `|` operator only had an upper-bound neutral, oo); separating guard
-   and value makes it work. *)
+(* [=] = equality: pre = E[post].  True at x = 1 (res = 2). *)
 lemma t_eq :
   ehoare [=] [M.f : {x = 1 | 2%xr} ==> {res = 2 | res%xr}].
 proof.
@@ -400,12 +343,12 @@ lemma t_while_mult_prefix :
 proof.
   proc.
   while (true, 1%xr) (WPrefix.b%xr) 0%r.
-  + wp. skip => &hr /=. smt(xle_cxr_l xle_cxr_r). (* g1 *)
-  + move=> &hr /=. smt(xle_cxr_l xle_cxr_r).      (* g2 *)
-  + wp. skip => &hr /=. smt(xle_cxr_l xle_cxr_r). (* g3 *)
+  + wp. skip => &hr /=. smt(). (* g1 *)
+  + move=> &hr /=. smt().      (* g2 *)
+  + wp. skip => &hr /=. smt(). (* g3 *)
   + move=> &hr /=. smt().                          (* g4 *)
   + move=> &hr /=. smt().                          (* g5 *)
-  + wp. skip => &hr /=. smt(xle_cxr_l xle_cxr_r). (* prefix *)
+  + wp. skip => &hr /=. smt(). (* prefix *)
 qed.
 
 (* Prefix + suffix workflow.  As for the historical upper-bound while tactic,
@@ -1170,3 +1113,33 @@ proof. by proc; call /(fun z => z * 2%xr) f_eq; auto. qed.
 lemma t_call_fun_eq_nonlinear :
   ehoare [=] [CF.g : {0 <= CF.x | (CF.x + 1)%xr * (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr * CF.x%xr}].
 proof. proc. call /(fun z => z * z) f_eq. abort.
+
+(* -------------------------------------------------------------------- *)
+(* The consequence rule carries the frame of the variables the program
+   does not write, on the guards and in the three directions: [CF.f]
+   leaves [CF.y] alone, so [CF.y = 7] passes from the pre to the post.
+   The frame obligation is the second goal; [conseq [-frame]] leaves the
+   plain rule, whose post obligation is then unprovable. *)
+lemma t_conseq_frame_ge :
+  ehoare [>=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by conseq f_ge => />. qed.
+
+lemma t_conseq_frame_le :
+  ehoare [<=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by conseq f_le => />. qed.
+
+lemma t_conseq_frame_eq :
+  ehoare [=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. by conseq f_eq => />. qed.
+
+lemma t_conseq_frame_stmt :
+  ehoare [<=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof.
+  proc.
+  conseq (_: {0 <= CF.x | (CF.x + 1)%xr} ==> {0 <= CF.x | CF.x%xr}) => />.
+  by auto => /> /#.
+qed.
+
+lemma t_conseq_noframe :
+  ehoare [<=] [CF.f : {CF.y = 7 /\ 0 <= CF.x | (CF.x + 1)%xr} ==> {CF.y = 7 /\ 0 <= CF.x | CF.x%xr}].
+proof. conseq [-frame] f_le => />. abort.
