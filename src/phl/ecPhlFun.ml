@@ -259,6 +259,14 @@ let t_hoareF_abs_r inv tc =
 let t_ehoareF_abs_r inv tc =
   let env = FApi.tc1_env tc in
   let hf = tc1_as_ehoareF tc in
+  (* The invariant rule bounds an abstract procedure from above only: the
+     procedure may diverge, and a lower bound needs a termination argument
+     together with a bound on the number of oracle calls that change the
+     invariant. *)
+  if hf.ehf_cmp <> FHge then
+    tc_error !!tc
+      "the invariant rule for abstract procedures supports only \
+       upper-bound ([>=]) ehoare judgments";
   let pre, post, sg = FunAbsLow.ehoareF_abs_spec !!tc env hf.ehf_f inv in
 
   let tactic tc = FApi.xmutate1 tc `FunAbs sg in

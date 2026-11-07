@@ -862,3 +862,22 @@ proof.
   + by move=> &1 h; exists EQ1.x{1}.
   fail smt().
 abort.
+
+(* -------------------------------------------------------------------- *)
+(* The invariant rule for abstract procedures bounds from above only: an
+   abstract procedure may diverge, so [proc inv] is refused on [<=] and [=]
+   goals.  Without the check, [proc (1%xr)] would establish that every
+   adversary terminates with probability 1. *)
+module type AdvT = { proc f() : unit }.
+
+lemma t_abs_upper (A <: AdvT) :
+  ehoare [>=] [A.f : 1%xr ==> 1%xr].
+proof. by proc (1%xr). qed.
+
+lemma t_abs_rejects_lower (A <: AdvT) :
+  ehoare [<=] [A.f : 1%xr ==> 1%xr].
+proof. fail proc (1%xr). abort.
+
+lemma t_abs_rejects_eq (A <: AdvT) :
+  ehoare [=] [A.f : 1%xr ==> 1%xr].
+proof. fail proc (1%xr). abort.
