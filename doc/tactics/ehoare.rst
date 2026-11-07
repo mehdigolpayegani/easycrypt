@@ -151,8 +151,9 @@ inside the loop. The rule is named after a slash:
   of Hark, Kaminski, Giesl and Katoen, with the expected increase in place of
   a bounded change.
 - ``/bounded C`` (McIver and Morgan): ``E <= C`` under ``P`` for a real
-  constant ``C``, and the loop terminates almost surely from ``P``, which is
-  left as the goal ``{P | 1} <= while b do c {P /\ !b | 1}``.
+  ``C`` that the loop body does not write, and the loop terminates almost
+  surely from ``P``, which is left as the goal
+  ``{P | 1} <= while b do c {P /\ !b | 1}``.
 - ``/ast V p d`` (McIver, Morgan, Kaminski and Katoen): the value of the
   invariant must be ``1``, and the rule proves almost-sure termination from
   a real variant ``V``, non-negative under ``P`` and positive inside the
@@ -161,8 +162,9 @@ inside the loop. The rule is named after a slash:
   with probability at least ``p v``,
   ``forall v, {P /\ b /\ V = v | 1 - p v} >= c {true | [v - d v < V]}``,
   for ``p : real -> real`` into ``(0, 1]`` and ``d : real -> real`` into
-  ``(0, oo)``, both antitone. It applies to loops whose expected duration is
-  infinite, such as the symmetric random walk.
+  ``(0, oo)``, both antitone and both independent of the variables the loop
+  body writes. It applies to loops whose expected duration is infinite, such
+  as the symmetric random walk.
 
 The named rules are refused on upper bounds.
 

@@ -1313,6 +1313,59 @@ lemma t_rule_rejects_unknown :
   ehoare [<=] [CD.run : {0 <= CD.n | 1%xr} ==> {CD.n <= 0 | 1%xr}].
 proof. proc. fail while /foo CD.n. abort.
 
+(* The bound of the bounded rule and the functions p and d of the ast rule
+   keep their value along the loop: the body must not write them.
+
+   DB doubles x and stops with probability 1/2: E = [!t] * x is an exact
+   sub-invariant whose running mass never vanishes.  With the bound x,
+   which the body writes, [while /bounded] would prove x <= E[0] from
+   x >= 1, hence 1 <= Pr[DB.run() : false] by [byehoare]. *)
+module DB = {
+  var x : int
+  var t : bool
+  proc run () : int = {
+    t <- false;
+    while (!t) { t <$ {0,1}; x <- 2 * x; }
+    return x;
+  }
+}.
+
+lemma t_rule_bounded_rejects_written :
+  ehoare [<=] [DB.run : {1 <= DB.x | DB.x%xr} ==> {true | 0%xr}].
+proof.
+proc.
+fail while /bounded ((1 <= DB.x), (b2r (!DB.t) * DB.x%r)%xr) (DB.x%r).
+abort.
+
+(* WK decreases w by one with probability 1 / (c^2 + 2) at the c-th
+   iteration, so it runs forever with probability prod_c (1 - 1/(c^2+2)) > 0
+   from w = 1.  With the progress probability 1 / (c^2 + 2), which the body
+   writes, [while /ast] would prove its almost-sure termination: w is a
+   supermartingale, decreases by 1 with that probability, and the premises
+   on p and d are met at every memory. *)
+module WK = {
+  var w, c : int
+  proc run () : unit = {
+    var b;
+    c <- 0;
+    while (0 < w) {
+      b <$ Biased.dbiased (1%r / (c%r ^ 2 + 2%r));
+      w <- if b then w - 1 else w;
+      c <- c + 1;
+    }
+  }
+}.
+
+lemma t_rule_ast_rejects_written :
+  ehoare [<=] [WK.run : {0 <= WK.w | 1%xr} ==> {WK.w = 0 | 1%xr}].
+proof.
+proc.
+fail while /ast ((0 <= WK.w), 1%xr) (WK.w%r)
+  (fun (_ : real) => 1%r / (WK.c%r ^ 2 + 2%r)) (fun (_ : real) => 1%r).
+fail while /ast ((0 <= WK.w), 1%xr) (WK.w%r)
+  (fun (_ : real) => 1%r / 2%r) (fun (_ : real) => WK.c%r + 1%r).
+abort.
+
 (* -------------------------------------------------------------------- *)
 (* An exact judgment serves as either bound: a [=] lemma applies to a
    [<=] or [>=] goal through conseq, conseq / F, call and call / F; and

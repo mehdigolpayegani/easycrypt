@@ -423,9 +423,18 @@ let t_ehoare_while_ascent_core (r : ss_inv) tc =
          [@alert "-priv_pl"]) in
   FApi.xmutate1 tc `While [g1; g2; g3]
 
+(* a parameter of a rule that must keep its value along the loop *)
+let check_loop_constant tc env m c what (f : form) =
+  if not (PV.indep env (s_write env c) (PV.fv env m f)) then
+    tc_error !!tc
+      "%s cannot depend on variables written by the loop body" what
+
 let t_ehoare_while_bounded_core (bnd : ss_inv) tc =
-  let _, _, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "bounded" tc in
+  let env, _, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "bounded" tc in
   let bnd = (EcSubst.ss_inv_rebind bnd m).inv in
+  (* the bound is uniform over the iterations: C * Pr[still running]
+     bounds the running part of the expectation *)
+  check_loop_constant tc env m c "the bound of the bounded rule" bnd;
   let g1 = g_body hs b c pre_g pre_v in
   let g2 = mem_prop_of hs (f_imp_simpl pre_g (f_xreal_le pre_v (f_r2xr bnd))) in
   (* the loop terminates almost surely from P *)
@@ -438,7 +447,7 @@ let t_ehoare_while_bounded_core (bnd : ss_inv) tc =
   FApi.xmutate1 tc `While [g1; g2; g3]
 
 let t_ehoare_while_ast_core (vf : ss_inv) (p : ss_inv) (d : ss_inv) tc =
-  let _, hyps, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "ast" tc in
+  let env, hyps, hs, m, b, c, pre_g, pre_v = ehoare_lower_goal "ast" tc in
   if not (EcReduction.is_conv hyps pre_v f_xr1) then
     tc_error !!tc
       "the McIver rule proves almost-sure termination: the value of the \
@@ -446,6 +455,10 @@ let t_ehoare_while_ast_core (vf : ss_inv) (p : ss_inv) (d : ss_inv) tc =
   let vf = (EcSubst.ss_inv_rebind vf m).inv in
   let p  = (EcSubst.ss_inv_rebind p  m).inv in
   let d  = (EcSubst.ss_inv_rebind d  m).inv in
+  (* p and d are the same functions at every iteration: the progress
+     condition must be uniform over the states with a given value of V *)
+  check_loop_constant tc env m c "the progress probability of the ast rule" p;
+  check_loop_constant tc env m c "the decrease of the ast rule" d;
   let app f x = f_app_simpl f [x] treal in
   let p_and_b = f_and_simpl pre_g b in
   let g1 = g_body hs b c pre_g pre_v in
