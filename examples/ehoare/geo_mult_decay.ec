@@ -19,9 +19,10 @@ module GEO = {
 op geoE (b : bool) (c : int) : xreal =
   (c%r + 2%r * b2r b)%xr.
 
-(* V = (c+2)[b], with the constant decay factor beta = 3/4. *)
-op geoV (b : bool) (c : int) : xreal =
-  ((c%r + 2%r) * b2r b)%xr.
+(* V = c + 2, with the constant decay factor beta = 3/4: on the outputs of
+   the body that stay inside the loop, E[[b] V'] = (c+3)/2 <= 3/4 (c+2)
+   as 0 <= c. *)
+op geoV (c : int) : xreal = (c%r + 2%r)%xr.
 
 op geo_beta : real = 3%r / 4%r.
 
@@ -32,7 +33,7 @@ lemma geo_lower :
     {0 <= GEO.c /\ !GEO.b | GEO.c%xr}].
 proof.
   proc.
-  while (geoV GEO.b GEO.c) geo_beta.
+  while (geoV GEO.c) geo_beta.
 
   (* Post bridge: at exit b=false, geoE is exactly c. *)
   + move=> &hr [hc hb].
@@ -54,12 +55,12 @@ proof.
   + move=> &hr [hc hb] /=.
     by rewrite /geoE /geoV hb /=.
 
-  (* G3: wp(body, geoV) <= (3/4) ** geoV. *)
+  (* G3: wp(body, [b] ** geoV) <= (3/4) ** geoV. *)
   + wp.
     skip => &hr /=.
     move=> [hc hb].
-    rewrite /geoV /geo_beta hb /=.
     rewrite Ep_dbool /=.
+    rewrite /geoV /geo_beta /=.
     smt().
 
   (* G4: beta = 3/4 belongs to [0,1). *)
@@ -68,6 +69,5 @@ proof.
     smt().
 
   (* G5: geoV is a finite xreal on active states. *)
-  + move=> &hr [hc hb] /=.
-    by rewrite /geoV hb /=.
+  + by move=> &hr [hc hb] /=.
 qed.

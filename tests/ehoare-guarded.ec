@@ -480,7 +480,8 @@ proof. proc. fail while (W.b%xr) (b2r W.b). abort.
 (* Deterministic countdown, proved without SMT.  The guarded expectation
    invariant is {x >= 0 /\ c >= 0 | c+x}.  It is preserved exactly because
    the body transfers one unit from x to c.  For lower-bound soundness, the
-   decay witness V = 2^x (c+x) contracts by beta = 1/2 at every iteration. *)
+   decay witness V = 2^x (c+x) contracts by beta = 1/2 at every iteration
+   that stays inside the loop, and counts for 0 at the exit. *)
 module WCountdown = {
   var x : int
   var c : int
@@ -537,7 +538,9 @@ proof.
     apply/RealOrder.exprn_ege1; first exact hx.
     by rewrite le_fromint.
 
-  (* G3: wp(body,V) = V/2 = beta ** V. *)
+  (* G3: wp(body, [b] ** V) <= beta ** V.  After the body, the guard
+     0 < x - 1 tells whether the run stays inside the loop: inside, the
+     witness is exactly halved; outside, it counts for 0. *)
   + wp.
     skip => &hr /=.
     move=> [[hx hc] hxpos].
@@ -558,18 +561,24 @@ proof.
         2%r * ((2%r ^ (WCountdown.x{hr} - 1)) *
         (WCountdown.c{hr} + WCountdown.x{hr})%r) by
       apply/RealOrder.mulr_ge0.
-    rewrite !to_pos_pos.
-    + exact hprod.
-    + by rewrite -RField.mulrA.
-    + apply RealOrder.lerr_eq.
-      have hnum :
-          2%r * (2%r ^ (WCountdown.x{hr} - 1)) *
-            (WCountdown.c{hr} + WCountdown.x{hr})%r =
-          2%r * ((2%r ^ (WCountdown.x{hr} - 1)) *
-            (WCountdown.c{hr} + WCountdown.x{hr})%r) by
-        rewrite -RField.mulrA.
-      rewrite hnum.
-      rewrite (RField.mulrC 2%r) RField.mulrK //.
+    have htwo : 0%r < 2%r by
+      rewrite (_ : 2%r = 1%r + 1%r) 1://.
+    case: (0 < WCountdown.x{hr} - 1) => _.
+    + rewrite !to_pos_pos.
+      + exact RealOrder.ler01.
+      + exact hprod.
+      + by rewrite -RField.mulrA.
+      rewrite RField.mul1r.
+      apply RealOrder.lerr_eq.
+      by rewrite -(RField.mulrA 2%r) (RField.mulrC 2%r) RField.mulrK.
+    + rewrite !to_pos_pos.
+      + by [].
+      + exact hprod.
+      + by rewrite -RField.mulrA.
+      rewrite RField.mul0r.
+      apply/RealOrder.divr_ge0.
+      + by rewrite -RField.mulrA.
+      + exact/RealOrder.ltrW/htwo.
 
   (* G4: beta = 1/2 belongs to [0,1). *)
   + move=> _.

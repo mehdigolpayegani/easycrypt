@@ -142,7 +142,8 @@ let t_ehoare_while (inv : ss_inv) tc =
 
 (* -------------------------------------------------------------------- *)
 (* Lower-bound While-Mult for {P | E} while b do c {P /\ !b | E},
-   with decay witness V and factor beta. *)
+   with decay witness V and factor beta: the expected value of V on the
+   outputs of the body that stay inside the loop is at most beta ** V. *)
 let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
   let env  = FApi.tc1_env tc in
   let hyps = FApi.tc1_hyps tc in
@@ -187,11 +188,13 @@ let t_ehoare_while_mult_core (v : ss_inv) (beta : ss_inv) tc =
       [@alert "-priv_pl"] in
   (* (2) P /\ b => E <= V. *)
   let g2 = mem_prop (f_imp_simpl p_and_b (f_xreal_le pre_v v.inv)) in
-  (* (3) V decays by beta, expressed as an upper bound. *)
+  (* (3) V decays by beta on the outputs that stay inside the loop,
+     expressed as an upper bound: {P /\ b | beta ** V} c {true | [b] ** V}. *)
+  let b_v = f_xsmul (f_r2rp (f_b2r e.inv)) v.inv in
   let g3 =
     f_eHoareS_r
       { hs with ehs_pr = f_tuple [p_and_b; beta_v]; ehs_s = c;
-                ehs_po = f_tuple [f_true; v.inv]; ehs_cmp = FHge }
+                ehs_po = f_tuple [f_true; b_v]; ehs_cmp = FHge }
       [@alert "-priv_pl"] in
   (* (4) 0 <= beta < 1. *)
   let g4 = mem_prop (f_and (f_real_le f_r0 beta.inv) (f_real_lt beta.inv f_r1)) in
