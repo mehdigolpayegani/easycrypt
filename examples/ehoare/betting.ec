@@ -5,7 +5,8 @@ require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder.
 
 op Q : int.
-axiom Q_ge0 : 0 <= Q.
+section.
+declare axiom Q_ge0 : 0 <= Q.
 
 module type Bet = { proc bet (a : int) : unit }.
 module type Adv (B : Bet) = { proc play () : unit }.
@@ -62,3 +63,5 @@ call (: (O.q <= Q /\ 0 <= O.w, O.w%xr) ==> (O.q <= Q /\ 0 <= O.w, O.w%xr)).
   by move=> &hr _; rewrite /is_real.
 by auto => &hr /> _; exact Q_ge0.
 qed.
+
+end section.

@@ -18,7 +18,8 @@ require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder.
 
 op N : int.
-axiom N_ge1 : 1 <= N.
+section.
+declare axiom N_ge1 : 1 <= N.
 
 module G = {
   var w : int
@@ -120,3 +121,5 @@ qed.
 lemma gambler_duration :
   ehoare [=] [G.run : {0 <= G.w <= N /\ G.c = 0 | (G.w%r * (N - G.w)%r)%xr} ==> {true | G.c%xr}].
 proof. by conseq gambler_time => />. qed.
+
+end section.

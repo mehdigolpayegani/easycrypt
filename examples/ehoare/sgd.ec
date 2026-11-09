@@ -17,9 +17,10 @@ require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder Biased.
 
 op lr, sigma, gamma : real.
-axiom lr_bnd : 0%r < lr < 1%r.
-axiom sigma_gt0 : 0%r < sigma.
-axiom gamma_bnd : 0%r <= gamma < 1%r.
+section.
+declare axiom lr_bnd : 0%r < lr < 1%r.
+declare axiom sigma_gt0 : 0%r < sigma.
+declare axiom gamma_bnd : 0%r <= gamma < 1%r.
 
 op rho = (1%r - lr) * (1%r - lr).
 op A = (1%r - gamma) * rho / (1%r - gamma * rho).
@@ -182,3 +183,5 @@ conseq sgd_error.
   by have := mulr_ge0 A (SGD.x{hr} * SGD.x{hr}) A_ge0 (sq_ge0 SGD.x{hr}); smt().
 by [].
 qed.
+
+end section.

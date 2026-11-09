@@ -9,10 +9,11 @@ op [lossless] dr : r distr.
 op test : r -> bool.
 
 op p = mu dr test.
-axiom dr_mu_test : 0%r < p.
+section.
+declare axiom dr_mu_test : 0%r < p.
 
 op eps : real.
-axiom dr_mu1 : forall (x:r), mu1 dr x <= eps.
+declare axiom dr_mu1 : forall (x:r), mu1 dr x <= eps.
 
 lemma eps_ge0: 0%r <= eps. by smt(dr_mu1 mu_bounded). qed.
 
@@ -25,7 +26,7 @@ module type Adv (O:Oracle) = {
 }.
 
 op Q : int.
-axiom Q_nneg : 0 <= Q.
+declare axiom Q_nneg : 0 <= Q.
 
 module O = {
 
@@ -121,3 +122,5 @@ lemma pr_bad &m (A<:Adv{-O}) : Pr[Main(A).main() @ &m : O.bad] <= eps * Q%r * (i
   + auto.
   auto.
 qed.
+
+end section.

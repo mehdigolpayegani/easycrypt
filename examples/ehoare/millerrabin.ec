@@ -78,11 +78,12 @@ op witness (n a : int) =
 (* Soundness of the witness: if n is prime, the squares a^(2^r * d) go up
    to a^(n-1) = 1 (Fermat), and the only square roots of 1 modulo n are 1
    and -1. *)
-axiom witness_composite n a : witness n a => composite n.
+section.
+declare axiom witness_composite n a : witness n a => composite n.
 
 (* Rabin-Monier: a composite odd n has at most (n-1)/4 strong liars in
    [1 .. n-1]. *)
-axiom nonwitness_count n : composite n => odd n => 9 <= n =>
+declare axiom nonwitness_count n : composite n => odd n => 9 <= n =>
   4 * count (fun a => !witness n a) (range 1 n) <= n - 1.
 
 (* -------------------------------------------------------------------- *)
@@ -238,3 +239,5 @@ qed.
 lemma pr_mr_prime (n k : int) &m : prime n => 4 <= n =>
   Pr[MR.test(n, k) @ &m : res] = 1%r.
 proof. by move=> hp hn; byehoare (mr_prime n k hp hn). qed.
+
+end section.

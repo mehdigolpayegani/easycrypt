@@ -14,7 +14,8 @@ require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder Biased.
 
 op p : real.
-axiom p_bnd : 0%r < p < 1%r.
+section.
+declare axiom p_bnd : 0%r < p < 1%r.
 
 module VN = {
   var c : int
@@ -88,3 +89,5 @@ qed.
 
 lemma pr_vn_fair &m : Pr[VN.run() @ &m : res] = 1%r / 2%r.
 proof. by byehoare vn_fair. qed.
+
+end section.

@@ -20,11 +20,12 @@ import RealOrder Biased.
 
 op eps : real.
 op gap : real.
-axiom eps_bnd : 0%r <= eps <= 1%r.
-axiom gap_ge0 : 0%r <= gap.
+section.
+declare axiom eps_bnd : 0%r <= eps <= 1%r.
+declare axiom gap_ge0 : 0%r <= gap.
 
 op T : int.
-axiom T_ge0 : 0 <= T.
+declare axiom T_ge0 : 0 <= T.
 
 module type Greedy = { proc choose () : bool }.
 
@@ -122,3 +123,5 @@ wp; skip => &hr /=.
 split; 1: exact T_ge0.
 by apply le_pos; smt().
 qed.
+
+end section.

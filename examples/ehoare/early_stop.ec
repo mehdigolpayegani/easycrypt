@@ -10,16 +10,24 @@ require import AllCore Int Real Xreal Distr StdOrder.
 import RealOrder.
 
 op d : real distr.
-axiom d_ll : is_lossless d.
-axiom d_bnd : forall x, x \in d => 0%r <= x <= 1%r.
+section.
+declare axiom d_ll : is_lossless d.
+declare axiom d_bnd : forall x, x \in d => 0%r <= x <= 1%r.
 
 op mu : real.
-axiom d_mean : Ep d (fun x => x%xr) = mu%xr.
-(* follows from d_mean and d_bnd *)
-axiom mu_bnd : 0%r <= mu <= 1%r.
+declare axiom d_mean : Ep d (fun x => x%xr) = mu%xr.
+(* d_mean bounds mu from above only: %xr truncates negative reals *)
+declare axiom mu_ge0 : 0%r <= mu.
+
+lemma mu_le1 : mu <= 1%r.
+proof.
+have h : Ep d (fun (x : real) => x%xr) <= Ep d (fun (_ : real) => 1%xr).
++ by apply le_Ep => x hx /=; rewrite !to_pos_pos; smt(d_bnd).
+by move: h; rewrite d_mean EpC d_ll /= !to_pos_pos; smt(mu_ge0).
+qed.
 
 op K : int.
-axiom K_ge0 : 0 <= K.
+declare axiom K_ge0 : 0 <= K.
 
 module type Stat = { proc look () : unit }.
 module type Adv (S : Stat) = { proc play () : unit }.
@@ -55,9 +63,9 @@ proc; if; last by auto.
 auto => &hr /> hn hs hv hlt; split; 1: smt(d_bnd).
 rewrite (eq_Ep _ _ ((fun (x : real) => x%xr) +
                     (fun (_ : real) => (O.s{hr} + mu * (K - (O.n{hr} + 1))%r)%xr))).
-+ move=> x hx /=; rewrite Rp_to_real_eq /= !to_pos_pos; smt(d_bnd mu_bnd).
++ move=> x hx /=; rewrite Rp_to_real_eq /= !to_pos_pos; smt(d_bnd mu_ge0 mu_le1).
 rewrite EpD EpC d_ll d_mean /=.
-by rewrite Rp_to_real_eq /= !to_pos_pos; smt(mu_bnd).
+by rewrite Rp_to_real_eq /= !to_pos_pos; smt(mu_ge0 mu_le1).
 qed.
 
 lemma wald (A <: Adv{-O}) :
@@ -81,3 +89,5 @@ call (: (O.n <= K /\ 0%r <= O.s, (O.s + mu * (K - O.n)%r)%xr) ==>
   by move=> &hr _; rewrite /is_real.
 by auto => /=; exact K_ge0.
 qed.
+
+end section.

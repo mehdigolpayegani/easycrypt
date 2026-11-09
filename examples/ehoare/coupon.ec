@@ -9,7 +9,8 @@ require import AllCore Int Real List Distr DInterval FSet Xreal StdOrder.
 import RealOrder StdBigop.Bigreal.
 
 op n : int.
-axiom n_ge1 : 1 <= n.
+section.
+declare axiom n_ge1 : 1 <= n.
 
 module CC = {
   var s : int fset
@@ -135,3 +136,5 @@ while /ascent (((forall x, x \in CC.s => 0 <= x < n) /\ 0 <= CC.c),
   by apply divr_ge0; smt().
 by auto => &hr /=; rewrite fcards0 /=; smt(in_fset0).
 qed.
+
+end section.

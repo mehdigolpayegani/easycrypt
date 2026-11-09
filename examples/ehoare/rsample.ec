@@ -13,7 +13,8 @@ type r.
 op [lossless] dr : r distr.
 op test : r -> bool.
 op p = mu dr test.
-axiom p_gt0 : 0%r < p.
+section.
+declare axiom p_gt0 : 0%r < p.
 
 module RS = {
   var log : r list
@@ -107,3 +108,5 @@ qed.
 lemma pr_rsample_out_zero (a : r) &m : !test a =>
   Pr[RS.rsample() @ &m : res = a] = 0%r.
 proof. by move=> ha; byehoare (rsample_out_zero a ha). qed.
+
+end section.

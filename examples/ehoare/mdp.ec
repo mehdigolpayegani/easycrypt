@@ -27,9 +27,10 @@ import RealOrder Biased.
 (* Part A: discounted value of a two-state chain *)
 
 op a, c, gamma : real.
-axiom a_bnd : 0%r <= a <= 1%r.
-axiom c_bnd : 0%r <= c <= 1%r.
-axiom gamma_bnd : 0%r <= gamma < 1%r.
+section.
+declare axiom a_bnd : 0%r <= a <= 1%r.
+declare axiom c_bnd : 0%r <= c <= 1%r.
+declare axiom gamma_bnd : 0%r <= gamma < 1%r.
 
 (* closed-form solution of the Bellman equations; D > 0 since gamma < 1 *)
 op D : real = (1%r - gamma) * (1%r - gamma * c + gamma * a).
@@ -133,11 +134,14 @@ qed.
 (* ------------------------------------------------------------------ *)
 (* Part B: reaching the goal before falling off the cliff *)
 
+end section.
+
+section.
 op p : real.
-axiom p_bnd : 0%r < p < 1%r.
-axiom p_neq : p <> 1%r / 2%r.
+declare axiom p_bnd : 0%r < p < 1%r.
+declare axiom p_neq : p <> 1%r / 2%r.
 op N : int.
-axiom N_ge1 : 1 <= N.
+declare axiom N_ge1 : 1 <= N.
 op rho = (1%r - p) / p.
 
 lemma rho_gt0 : 0%r < rho.
@@ -226,3 +230,5 @@ qed.
 lemma pr_cliff &m : 0 <= Cliff.w{m} <= N =>
   Pr[Cliff.run() @ &m : res] = (rho ^ Cliff.w{m} - 1%r) / (rho ^ N - 1%r).
 proof. by move=> hw; byehoare cliff_value. qed.
+
+end section.

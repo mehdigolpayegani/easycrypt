@@ -28,7 +28,8 @@ import RealOrder Biased.
 
 (* probability that a contraction at m vertices spares the minimum cut *)
 op q : int -> real.
-axiom q_bnd (m : int) : 3 <= m => 1%r - 2%r / m%r <= q m <= 1%r.
+section.
+declare axiom q_bnd (m : int) : 3 <= m => 1%r - 2%r / m%r <= q m <= 1%r.
 
 module Karger = {
   proc contract (n : int) : bool = {
@@ -162,3 +163,5 @@ lemma pr_karger_amplify (n r : int) &m : 2 <= n => 0 <= r =>
   1%r - (1%r - 2%r / (n%r * (n - 1)%r)) ^ r
   <= Pr[Karger.amplify(n, r) @ &m : res].
 proof. by move=> hn hr; byehoare (karger_amplify n r hn hr). qed.
+
+end section.

@@ -16,7 +16,8 @@ require import AllCore Int Real Xreal Distr DBool StdOrder.
 import RealOrder Biased.
 
 op n : int.
-axiom n_ge0 : 0 <= n.
+section.
+declare axiom n_ge0 : 0 <= n.
 
 module Morris = {
   var x : int
@@ -90,3 +91,5 @@ while /variant ((0 <= Morris.x /\ i <= n),
 wp; skip => &hr /=; split; 1: smt(n_ge0).
 by rewrite expr0; congr; rewrite fromintM fromintB fromintD; field.
 qed.
+
+end section.
