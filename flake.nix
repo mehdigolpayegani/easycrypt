@@ -4,7 +4,6 @@
 
     flake-utils.url = "github:numtide/flake-utils";
 
-    nixpkgs.url = "github:nixos/nixpkgs/24.05";
     stable.url = "github:nixos/nixpkgs/24.05";
     nixpkgs.follows = "opam-nix/nixpkgs";
 
